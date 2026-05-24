@@ -99,9 +99,7 @@ export default function Login({ onLogin }) {
             </button>
           </form>
 
-          <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--color-text-muted)', marginTop: 20 }}>
-            Demo: enter any email + password (≥ 4 chars)
-          </div>
+         
         </div>
       </div>
 
