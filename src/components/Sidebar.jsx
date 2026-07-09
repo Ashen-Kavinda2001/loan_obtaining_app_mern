@@ -1,15 +1,16 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Users, CreditCard, FileText,
-  PlusCircle, LogOut, Landmark, ChevronRight, X
+  PlusCircle, LogOut, Landmark, ChevronRight, X, Settings
 } from 'lucide-react';
 
 const navItems = [
-  { to: '/',           icon: LayoutDashboard, label: 'Dashboard'      },
-  { to: '/members',    icon: Users,           label: 'Members'         },
-  { to: '/loans',      icon: CreditCard,      label: 'Loan Details'    },
-  { to: '/grant-loan', icon: PlusCircle,      label: 'Grant Loan'      },
-  { to: '/register',   icon: FileText,        label: 'Register Member' },
+  { to: '/',           icon: LayoutDashboard, label: 'Dashboard'       },
+  { to: '/members',    icon: Users,           label: 'Members'          },
+  { to: '/loans',      icon: CreditCard,      label: 'Loan Details'     },
+  { to: '/grant-loan', icon: PlusCircle,      label: 'Grant Loan'       },
+  { to: '/register',   icon: FileText,        label: 'Register Member'  },
+  { to: '/settings',   icon: Settings,        label: 'Account Settings' },
 ];
 
 export default function Sidebar({ isOpen, onClose, onLogout }) {

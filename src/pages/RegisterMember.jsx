@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { CheckCircle, UserPlus } from 'lucide-react';
+import client from '../api/client';
 
 const initialForm = {
   fullName: '', idNumber: '', village: '', contactNumber: '', age: ''
 };
 
-// Field component defined OUTSIDE to avoid re-mount on every render
 function Field({ name, label, type = 'text', placeholder, value, onChange, error }) {
   return (
     <div className="form-group">
@@ -24,10 +24,12 @@ function Field({ name, label, type = 'text', placeholder, value, onChange, error
 }
 
 export default function RegisterMember() {
-  const [form, setForm]       = useState(initialForm);
-  const [errors, setErrors]   = useState({});
-  const [success, setSuccess] = useState(false);
+  const [form, setForm]         = useState(initialForm);
+  const [errors, setErrors]     = useState({});
+  const [success, setSuccess]   = useState(false);
   const [submitted, setSubmitted] = useState(null);
+  const [loading, setLoading]   = useState(false);
+  const [serverError, setServerError] = useState('');
 
   const validate = () => {
     const e = {};
@@ -43,19 +45,37 @@ export default function RegisterMember() {
     return e;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setServerError('');
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
-    setSubmitted({ ...form, _id: `m_${Date.now()}`, createdAt: new Date().toISOString() });
-    setSuccess(true);
-    setForm(initialForm);
-    setErrors({});
+
+    setLoading(true);
+    try {
+      const { data } = await client.post('/members', { ...form, age: Number(form.age) });
+      setSubmitted(data);
+      setSuccess(true);
+      setForm(initialForm);
+      setErrors({});
+    } catch (err) {
+      setServerError(err.response?.data?.message || 'Failed to register member. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="page-content">
       <div style={{ maxWidth: 680 }}>
+
+        {/* Server Error */}
+        {serverError && (
+          <div style={{
+            background: '#FEE2E2', border: '1px solid #FCA5A5', borderRadius: 'var(--radius-md)',
+            padding: '14px 18px', marginBottom: 20, fontSize: 13, color: '#991B1B'
+          }}>{serverError}</div>
+        )}
 
         {/* Success Banner */}
         {success && submitted && (
@@ -113,8 +133,8 @@ export default function RegisterMember() {
             </div>
 
             <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
-              <button type="submit" className="btn btn-primary">
-                <UserPlus size={15} /> Register Member
+              <button type="submit" className="btn btn-primary" disabled={loading}>
+                {loading ? 'Registering…' : <><UserPlus size={15} /> Register Member</>}
               </button>
               <button type="button" className="btn btn-outline" onClick={() => { setForm(initialForm); setErrors({}); setSuccess(false); }}>
                 Clear Form
@@ -123,7 +143,6 @@ export default function RegisterMember() {
           </form>
         </div>
 
-        {/* Info Box */}
         <div style={{
           marginTop: 20, background: '#EFF6FF', border: '1px solid #BFDBFE',
           borderRadius: 'var(--radius-md)', padding: '14px 18px', fontSize: 13, color: '#1E40AF'

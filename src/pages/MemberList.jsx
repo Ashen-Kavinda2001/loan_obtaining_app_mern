@@ -1,31 +1,61 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, Edit2, Trash2, UserPlus } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { demoMembers } from '../data/demoData';
+import client from '../api/client';
 
 export default function MemberList() {
-  const [members, setMembers] = useState(demoMembers);
-  const [query, setQuery]     = useState('');
+  const [members, setMembers]     = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState('');
+  const [query, setQuery]         = useState('');
   const [editMember, setEditMember] = useState(null);
-  const [deleteId, setDeleteId]     = useState(null);
+  const [deleteId, setDeleteId]   = useState(null);
+  const [saving, setSaving]       = useState(false);
+
+  // Fetch members from API
+  const fetchMembers = async () => {
+    try {
+      setLoading(true);
+      const { data } = await client.get('/members');
+      setMembers(data);
+    } catch (err) {
+      setError('Failed to load members. Is the server running?');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchMembers(); }, []);
 
   const filtered = members.filter(m =>
     m.fullName.toLowerCase().includes(query.toLowerCase()) ||
     m.idNumber.includes(query)
   );
 
-  const handleDelete = () => {
-    setMembers(prev => prev.filter(m => m._id !== deleteId));
-    setDeleteId(null);
+  const handleDelete = async () => {
+    try {
+      await client.delete(`/members/${deleteId}`);
+      setMembers(prev => prev.filter(m => m._id !== deleteId));
+      setDeleteId(null);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to delete member');
+    }
   };
 
-  const handleEdit = (e) => {
+  const handleEdit = async (e) => {
     e.preventDefault();
-    setMembers(prev => prev.map(m => m._id === editMember._id ? { ...editMember } : m));
-    setEditMember(null);
+    setSaving(true);
+    try {
+      const { data } = await client.put(`/members/${editMember._id}`, editMember);
+      setMembers(prev => prev.map(m => m._id === data._id ? data : m));
+      setEditMember(null);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to update member');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  /* Avatar circle */
   const Avatar = ({ name }) => (
     <div style={{
       width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
@@ -37,6 +67,20 @@ export default function MemberList() {
     </div>
   );
 
+  if (loading) return (
+    <div className="page-content">
+      <div style={{ textAlign: 'center', padding: 60, color: 'var(--color-text-muted)' }}>Loading members…</div>
+    </div>
+  );
+
+  if (error) return (
+    <div className="page-content">
+      <div style={{ background: '#FEE2E2', border: '1px solid #FCA5A5', borderRadius: 'var(--radius-md)', padding: '20px', color: '#991B1B' }}>
+        {error}
+      </div>
+    </div>
+  );
+
   return (
     <div className="page-content">
 
@@ -45,7 +89,6 @@ export default function MemberList() {
         <div className="page-title">Members</div>
         <div className="page-subtitle">{members.length} registered members</div>
 
-        {/* Search + Add row — stacks naturally on mobile due to flex-wrap */}
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <div className="search-wrapper" style={{ flex: '1 1 200px', minWidth: 0 }}>
             <Search size={15} />
@@ -63,9 +106,7 @@ export default function MemberList() {
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════
-          DESKTOP TABLE (hidden on mobile)
-      ══════════════════════════════════════════ */}
+      {/* ── Desktop Table ── */}
       <div className="table-wrapper hide-on-mobile">
         <table>
           <thead>
@@ -86,7 +127,7 @@ export default function MemberList() {
                 <td colSpan={8}>
                   <div className="empty-state">
                     <Search size={32} />
-                    <p>No members found for &ldquo;{query}&rdquo;</p>
+                    <p>{query ? `No members found for "${query}"` : 'No members yet.'}</p>
                   </div>
                 </td>
               </tr>
@@ -134,53 +175,29 @@ export default function MemberList() {
         </table>
       </div>
 
-      {/* ══════════════════════════════════════════
-          MOBILE CARDS (hidden on desktop)
-      ══════════════════════════════════════════ */}
+      {/* ── Mobile Cards ── */}
       <div className="show-on-mobile">
         {filtered.length === 0 ? (
-          <div className="card">
-            <div className="empty-state">
-              <Search size={32} />
-              <p>No members found</p>
-            </div>
-          </div>
+          <div className="card"><div className="empty-state"><Search size={32} /><p>No members found</p></div></div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {filtered.map(m => (
               <div key={m._id} style={{
-                background: 'var(--color-bg-card)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 'var(--radius-md)',
-                padding: '14px 16px',
-                boxShadow: '0 1px 3px var(--color-shadow)',
+                background: 'var(--color-bg-card)', border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-md)', padding: '14px 16px', boxShadow: '0 1px 3px var(--color-shadow)',
               }}>
-                {/* Top row: avatar + name + action buttons */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <Avatar name={m.fullName} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 14 }}>{m.fullName}</div>
-                    <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-                      {m.village} &nbsp;·&nbsp; Age {m.age}
-                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{m.village} &nbsp;·&nbsp; Age {m.age}</div>
                   </div>
                   <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setEditMember({ ...m })}>
-                      <Edit2 size={14} />
-                    </button>
-                    <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-danger)' }}
-                      onClick={() => setDeleteId(m._id)}>
-                      <Trash2 size={14} />
-                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setEditMember({ ...m })}><Edit2 size={14} /></button>
+                    <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-danger)' }} onClick={() => setDeleteId(m._id)}><Trash2 size={14} /></button>
                   </div>
                 </div>
-
-                {/* Bottom row: NIC + Contact */}
-                <div style={{
-                  display: 'grid', gridTemplateColumns: '1fr 1fr',
-                  gap: '6px 16px', marginTop: 12, paddingTop: 10,
-                  borderTop: '1px solid var(--color-border)',
-                }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--color-border)' }}>
                   <div>
                     <div style={{ fontSize: 10, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>NIC</div>
                     <div style={{ fontSize: 12, fontWeight: 600, fontFamily: 'monospace' }}>{m.idNumber}</div>
@@ -197,17 +214,8 @@ export default function MemberList() {
       </div>
 
       {/* ── Pagination ── */}
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        marginTop: 16, color: 'var(--color-text-muted)', fontSize: 13,
-        flexWrap: 'wrap', gap: 8
-      }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, color: 'var(--color-text-muted)', fontSize: 13, flexWrap: 'wrap', gap: 8 }}>
         <span>Showing {filtered.length} of {members.length} members</span>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button className="btn btn-outline btn-sm">Previous</button>
-          <button className="btn btn-primary btn-sm">1</button>
-          <button className="btn btn-outline btn-sm">Next</button>
-        </div>
       </div>
 
       {/* ── Edit Modal ── */}
@@ -248,7 +256,7 @@ export default function MemberList() {
               </div>
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
                 <button type="button" className="btn btn-outline" onClick={() => setEditMember(null)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Save Changes</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save Changes'}</button>
               </div>
             </form>
           </div>
@@ -260,10 +268,7 @@ export default function MemberList() {
         <div className="modal-overlay" onClick={() => setDeleteId(null)}>
           <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
             <div style={{ textAlign: 'center', padding: '8px 0 20px' }}>
-              <div style={{
-                width: 52, height: 52, borderRadius: '50%', background: '#FEE2E2',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px'
-              }}>
+              <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
                 <Trash2 size={22} color="#EF4444" />
               </div>
               <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>Delete Member?</div>

@@ -1,23 +1,53 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Users, CreditCard, DollarSign, AlertCircle,
   TrendingUp, ArrowUpRight, CheckCircle, PlusCircle
 } from 'lucide-react';
-import { dashboardStats, recentActivity, demoLoans, formatCurrency } from '../data/demoData';
+import client from '../api/client';
+import { formatCurrency } from '../data/demoData';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-const chartData = [
-  { month: 'Dec', collected: 28000 },
-  { month: 'Jan', collected: 35000 },
-  { month: 'Feb', collected: 42000 },
-  { month: 'Mar', collected: 31000 },
-  { month: 'Apr', collected: 48000 },
-  { month: 'May', collected: 16250 },
-];
-
 export default function Dashboard() {
-  const stats = dashboardStats;
-  const activeLoans = demoLoans.filter(l => l.status !== 'completed');
+  const [stats, setStats]   = useState(null);
+  const [loans, setLoans]   = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchAll = async () => {
+      try {
+        const [statsRes, loansRes] = await Promise.all([
+          client.get('/loans/stats'),
+          client.get('/loans'),
+        ]);
+        setStats(statsRes.data);
+        setLoans(loansRes.data);
+      } catch (err) {
+        console.error('Dashboard fetch error', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAll();
+  }, []);
+
+  // Static chart data (can be made dynamic later)
+  const chartData = [
+    { month: 'Dec', collected: 28000 },
+    { month: 'Jan', collected: 35000 },
+    { month: 'Feb', collected: 42000 },
+    { month: 'Mar', collected: 31000 },
+    { month: 'Apr', collected: 48000 },
+    { month: 'May', collected: stats?.collectedThisMonth || 0 },
+  ];
+
+  if (loading) return (
+    <div className="page-content">
+      <div style={{ textAlign: 'center', padding: 60, color: 'var(--color-text-muted)' }}>Loading dashboard…</div>
+    </div>
+  );
+
+  const activeLoans = loans.filter(l => l.status !== 'completed');
 
   return (
     <div className="page-content">
@@ -30,8 +60,8 @@ export default function Dashboard() {
           </div>
           <div className="stat-info">
             <div className="stat-label">Total Members</div>
-            <div className="stat-value">{stats.totalMembers}</div>
-            <div className="stat-sub">+2 this month</div>
+            <div className="stat-value">{stats?.totalMembers ?? 0}</div>
+            <div className="stat-sub">Registered in system</div>
           </div>
         </div>
 
@@ -41,8 +71,8 @@ export default function Dashboard() {
           </div>
           <div className="stat-info">
             <div className="stat-label">Active Loans</div>
-            <div className="stat-value">{stats.activeLoans}</div>
-            <div className="stat-sub">{stats.overdueLoans} overdue</div>
+            <div className="stat-value">{stats?.activeLoans ?? 0}</div>
+            <div className="stat-sub">{stats?.overdueLoans ?? 0} overdue</div>
           </div>
         </div>
 
@@ -52,7 +82,7 @@ export default function Dashboard() {
           </div>
           <div className="stat-info">
             <div className="stat-label">Total Lent</div>
-            <div className="stat-value" style={{ fontSize: 16 }}>{formatCurrency(stats.totalAmountLent)}</div>
+            <div className="stat-value" style={{ fontSize: 16 }}>{formatCurrency(stats?.totalAmountLent ?? 0)}</div>
             <div className="stat-sub">All time</div>
           </div>
         </div>
@@ -63,7 +93,7 @@ export default function Dashboard() {
           </div>
           <div className="stat-info">
             <div className="stat-label">Pending</div>
-            <div className="stat-value">{stats.pendingPayments}</div>
+            <div className="stat-value">{stats?.pendingPayments ?? 0}</div>
             <div className="stat-sub">Requires follow-up</div>
           </div>
         </div>
@@ -100,16 +130,16 @@ export default function Dashboard() {
         <div className="card">
           <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Recent Activity</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {recentActivity.map((act) => (
+            {(stats?.recentActivity || []).length === 0 ? (
+              <div style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>No recent activity.</div>
+            ) : (stats.recentActivity).map((act) => (
               <div key={act.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                 <div style={{
                   width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: act.type === 'payment' ? '#D1FAE5' : act.type === 'loan' ? '#EEF2FF' : '#DBEAFE'
+                  background: '#D1FAE5'
                 }}>
-                  {act.type === 'payment'  && <CheckCircle size={15} color="#10B981" />}
-                  {act.type === 'loan'     && <CreditCard  size={15} color="#4F46E5" />}
-                  {act.type === 'complete' && <CheckCircle size={15} color="#3B82F6" />}
+                  <CheckCircle size={15} color="#10B981" />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{act.member}</div>
@@ -135,7 +165,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Active Loans — TABLE on desktop, CARDS on mobile ── */}
+      {/* ── Active Loans Overview ── */}
       <div className="card">
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Active Loans Overview</div>
 
@@ -153,7 +183,9 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {activeLoans.map(loan => (
+              {activeLoans.length === 0 ? (
+                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 24 }}>No active loans.</td></tr>
+              ) : activeLoans.map(loan => (
                 <tr key={loan._id}>
                   <td style={{ fontWeight: 600 }}>{loan.memberName}</td>
                   <td style={{ color: 'var(--color-text-muted)' }}>{loan.memberVillage}</td>

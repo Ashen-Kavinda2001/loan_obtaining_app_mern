@@ -11,6 +11,7 @@ import RegisterMember from './pages/RegisterMember';
 import GrantLoan      from './pages/GrantLoan';
 import LoanDetails    from './pages/LoanDetails';
 import Login          from './pages/Login';
+import AccountSettings from './pages/AccountSettings';
 
 function AppShell({ onLogout }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -20,7 +21,6 @@ function AppShell({ onLogout }) {
 
   return (
     <div className="app-layout">
-      {/* Mobile overlay — tap to close sidebar */}
       {sidebarOpen && (
         <div className="sidebar-overlay" onClick={closeSidebar} />
       )}
@@ -39,6 +39,7 @@ function AppShell({ onLogout }) {
           <Route path="/register"   element={<RegisterMember />} />
           <Route path="/grant-loan" element={<GrantLoan />} />
           <Route path="/loans"      element={<LoanDetails />} />
+          <Route path="/settings"   element={<AccountSettings />} />
           <Route path="*"           element={<Navigate to="/" replace />} />
         </Routes>
       </div>
@@ -47,14 +48,25 @@ function AppShell({ onLogout }) {
 }
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  // Persist login: read token from localStorage on mount
+  const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem('token'));
+
+  const handleLogin = (token) => {
+    localStorage.setItem('token', token);
+    setIsLoggedIn(true);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    setIsLoggedIn(false);
+  };
 
   return (
     <BrowserRouter>
       {isLoggedIn
-        ? <AppShell onLogout={() => setIsLoggedIn(false)} />
+        ? <AppShell onLogout={handleLogout} />
         : <Routes>
-            <Route path="*" element={<Login onLogin={() => setIsLoggedIn(true)} />} />
+            <Route path="*" element={<Login onLogin={handleLogin} />} />
           </Routes>
       }
     </BrowserRouter>
