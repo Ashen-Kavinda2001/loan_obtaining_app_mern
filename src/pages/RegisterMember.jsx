@@ -1,12 +1,12 @@
-import { useState } from 'react';
-import { CheckCircle, UserPlus } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { CheckCircle, UserPlus, Plus, X } from 'lucide-react';
 import client from '../api/client';
 
 const initialForm = {
-  fullName: '', idNumber: '', village: '', contactNumber: '', age: ''
+  fullName: '', idNumber: '', village: '', contactNumber: '', age: '', groupId: ''
 };
 
-function Field({ name, label, type = 'text', placeholder, value, onChange, error }) {
+function Field({ label, type = 'text', placeholder, value, onChange, error }) {
   return (
     <div className="form-group">
       <label className="form-label">{label}</label>
@@ -24,12 +24,42 @@ function Field({ name, label, type = 'text', placeholder, value, onChange, error
 }
 
 export default function RegisterMember() {
-  const [form, setForm]         = useState(initialForm);
-  const [errors, setErrors]     = useState({});
-  const [success, setSuccess]   = useState(false);
+  const [form, setForm]           = useState(initialForm);
+  const [errors, setErrors]       = useState({});
+  const [success, setSuccess]     = useState(false);
   const [submitted, setSubmitted] = useState(null);
-  const [loading, setLoading]   = useState(false);
+  const [loading, setLoading]     = useState(false);
   const [serverError, setServerError] = useState('');
+
+  // Groups
+  const [groups, setGroups]               = useState([]);
+  const [showNewGroup, setShowNewGroup]   = useState(false);
+  const [newGroupName, setNewGroupName]   = useState('');
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [groupError, setGroupError]       = useState('');
+
+  useEffect(() => {
+    client.get('/groups')
+      .then(({ data }) => setGroups(data.groups || []))
+      .catch(() => {});
+  }, []);
+
+  const handleCreateGroup = async () => {
+    if (!newGroupName.trim()) { setGroupError('Group name is required'); return; }
+    setCreatingGroup(true);
+    setGroupError('');
+    try {
+      const { data } = await client.post('/groups', { name: newGroupName.trim() });
+      setGroups(prev => [...prev, data]);
+      setForm(f => ({ ...f, groupId: data._id }));
+      setNewGroupName('');
+      setShowNewGroup(false);
+    } catch (err) {
+      setGroupError(err.response?.data?.message || 'Failed to create group');
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
 
   const validate = () => {
     const e = {};
@@ -53,23 +83,31 @@ export default function RegisterMember() {
 
     setLoading(true);
     try {
-      const { data } = await client.post('/members', { ...form, age: Number(form.age) });
+      const { data } = await client.post('/members', {
+        ...form,
+        age:     Number(form.age),
+        groupId: form.groupId || null,
+      });
       setSubmitted(data);
       setSuccess(true);
       setForm(initialForm);
       setErrors({});
     } catch (err) {
-      setServerError(err.response?.data?.message || 'Failed to register member. Please try again.');
+      setServerError(err.response?.data?.message || 'Failed to register member.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const set = (field) => (e) => {
+    setForm(f => ({ ...f, [field]: e.target.value }));
+    setErrors(err => ({ ...err, [field]: '' }));
   };
 
   return (
     <div className="page-content">
       <div style={{ maxWidth: 680 }}>
 
-        {/* Server Error */}
         {serverError && (
           <div style={{
             background: '#FEE2E2', border: '1px solid #FCA5A5', borderRadius: 'var(--radius-md)',
@@ -77,7 +115,6 @@ export default function RegisterMember() {
           }}>{serverError}</div>
         )}
 
-        {/* Success Banner */}
         {success && submitted && (
           <div style={{
             background: '#D1FAE5', border: '1px solid #6EE7B7', borderRadius: 'var(--radius-md)',
@@ -87,7 +124,8 @@ export default function RegisterMember() {
             <div>
               <div style={{ fontWeight: 700, color: '#065F46', marginBottom: 2 }}>Member Registered Successfully!</div>
               <div style={{ fontSize: 13, color: '#065F46' }}>
-                <strong>{submitted.fullName}</strong> from {submitted.village} has been added to the system.
+                <strong>{submitted.fullName}</strong> from {submitted.village} has been added
+                {submitted.groupId ? <> to group <strong>{submitted.groupId.name}</strong></> : ' as Ungrouped'}.
               </div>
               <button
                 className="btn btn-sm"
@@ -112,31 +150,111 @@ export default function RegisterMember() {
           </div>
 
           <form onSubmit={handleSubmit} noValidate>
+            {/* Personal Info */}
             <div style={{ marginBottom: 8, fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               Personal Information
             </div>
             <div className="form-grid-2">
-              <Field name="fullName"      label="Full Name *"      placeholder="e.g. Kamal Perera"
-                value={form.fullName}      error={errors.fullName}      onChange={e => { setForm({ ...form, fullName: e.target.value });      setErrors({ ...errors, fullName: '' }); }} />
-              <Field name="idNumber"      label="NIC Number *"     placeholder="e.g. 199012345678"
-                value={form.idNumber}      error={errors.idNumber}      onChange={e => { setForm({ ...form, idNumber: e.target.value });      setErrors({ ...errors, idNumber: '' }); }} />
+              <Field label="Full Name *" placeholder="e.g. Kamal Perera"
+                value={form.fullName} error={errors.fullName} onChange={set('fullName')} />
+              <Field label="NIC Number *" placeholder="e.g. 199012345678"
+                value={form.idNumber} error={errors.idNumber} onChange={set('idNumber')} />
             </div>
             <div className="form-grid-2">
-              <Field name="village"       label="Village / Town *" placeholder="e.g. Matara"
-                value={form.village}       error={errors.village}       onChange={e => { setForm({ ...form, village: e.target.value });       setErrors({ ...errors, village: '' }); }} />
-              <Field name="contactNumber" label="Contact Number *"  placeholder="e.g. 077-123-4567"
-                value={form.contactNumber} error={errors.contactNumber} onChange={e => { setForm({ ...form, contactNumber: e.target.value }); setErrors({ ...errors, contactNumber: '' }); }} />
+              <Field label="Village / Town *" placeholder="e.g. Matara"
+                value={form.village} error={errors.village} onChange={set('village')} />
+              <Field label="Contact Number *" placeholder="e.g. 077-123-4567"
+                value={form.contactNumber} error={errors.contactNumber} onChange={set('contactNumber')} />
             </div>
             <div style={{ maxWidth: 200 }}>
-              <Field name="age" label="Age *" type="number" placeholder="e.g. 28"
-                value={form.age} error={errors.age} onChange={e => { setForm({ ...form, age: e.target.value }); setErrors({ ...errors, age: '' }); }} />
+              <Field label="Age *" type="number" placeholder="e.g. 28"
+                value={form.age} error={errors.age} onChange={set('age')} />
             </div>
 
-            <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+            {/* ── Group Assignment ── */}
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--color-border)' }}>
+              <div style={{ marginBottom: 8, fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Group Assignment <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+              </div>
+
+              {/* Group selector */}
+              {!showNewGroup ? (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <div className="form-group" style={{ flex: '1 1 200px', margin: 0 }}>
+                    <select
+                      className="form-control"
+                      value={form.groupId}
+                      onChange={e => setForm(f => ({ ...f, groupId: e.target.value }))}
+                    >
+                      <option value="">— No Group (Ungrouped) —</option>
+                      {groups.map(g => (
+                        <option key={g._id} value={g._id}>{g.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    style={{ marginTop: 0, flexShrink: 0, height: 40 }}
+                    onClick={() => setShowNewGroup(true)}
+                  >
+                    <Plus size={14} /> New Group
+                  </button>
+                </div>
+              ) : (
+                /* Inline create group */
+                <div style={{
+                  background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 8,
+                  padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)' }}>Create New Group</div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
+                      <input
+                        className="form-control"
+                        placeholder="e.g. Village A, Group 2026…"
+                        value={newGroupName}
+                        onChange={e => { setNewGroupName(e.target.value); setGroupError(''); }}
+                        onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleCreateGroup())}
+                        autoFocus
+                      />
+                      {groupError && <div style={{ fontSize: 12, color: 'var(--color-danger)', marginTop: 3 }}>{groupError}</div>}
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      style={{ height: 40, flexShrink: 0 }}
+                      onClick={handleCreateGroup}
+                      disabled={creatingGroup}
+                    >
+                      {creatingGroup ? '…' : <><Plus size={13} /> Create</>}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      style={{ height: 40, flexShrink: 0 }}
+                      onClick={() => { setShowNewGroup(false); setNewGroupName(''); setGroupError(''); }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Show selected group name */}
+              {form.groupId && !showNewGroup && (
+                <div style={{ marginTop: 6, fontSize: 12, color: '#4F46E5', fontWeight: 600 }}>
+                  ✓ Assigning to: {groups.find(g => g._id === form.groupId)?.name}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
               <button type="submit" className="btn btn-primary" disabled={loading}>
                 {loading ? 'Registering…' : <><UserPlus size={15} /> Register Member</>}
               </button>
-              <button type="button" className="btn btn-outline" onClick={() => { setForm(initialForm); setErrors({}); setSuccess(false); }}>
+              <button type="button" className="btn btn-outline"
+                onClick={() => { setForm(initialForm); setErrors({}); setSuccess(false); setServerError(''); }}>
                 Clear Form
               </button>
             </div>

@@ -26,10 +26,7 @@ export default function Topbar({ onMenuToggle }) {
         </div>
       </div>
       <div className="topbar-right">
-        <button className="topbar-icon-btn">
-          <Bell size={18} />
-          <span className="notif-dot" />
-        </button>
+        
         <div className="topbar-avatar">A</div>
       </div>
     </header>
