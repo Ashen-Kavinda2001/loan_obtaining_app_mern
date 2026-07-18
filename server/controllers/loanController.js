@@ -92,7 +92,7 @@ const getStats = async (req, res) => {
       .limit(5)
       .populate({ path: 'loanId', populate: { path: 'memberId', select: 'fullName' } });
 
-    const recentActivity = recentPayments.map((p, i) => ({
+    const recentActivity = recentPayments.map((p) => ({
       id:     p._id,
       type:   'payment',
       member: p.loanId?.memberId?.fullName || 'Unknown',
