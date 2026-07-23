@@ -15,7 +15,14 @@ const Payment   = require('./models/Payment');
 const seed = async () => {
   await connectDB();
 
-  // ── Wipe existing data ──────────────────────────────────
+  // ── Idempotency check: skip if data already exists ──────
+  const existingUser = await User.findOne({ email: 'admin@example.com' });
+  if (existingUser) {
+    console.log('✅ Database already seeded. Skipping seed.');
+    process.exit(0);
+  }
+
+  // ── Wipe existing data (only runs on first seed) ────────
   await Promise.all([
     User.deleteMany(),
     Member.deleteMany(),

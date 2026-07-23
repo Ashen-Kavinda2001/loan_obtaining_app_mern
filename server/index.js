@@ -1,11 +1,12 @@
 
 require('dotenv').config();
-const express  = require('express');
-const cors     = require('cors');
-const connectDB = require('./config/db');
+const express       = require('express');
+const cors          = require('cors');
+const connectDB     = require('./config/db');
+const initializeApp = require('./init');
 
-// Connect to MongoDB
-connectDB();
+// Connect to MongoDB, then run first-time setup if needed
+connectDB().then(() => initializeApp());
 
 const app = express();
 
