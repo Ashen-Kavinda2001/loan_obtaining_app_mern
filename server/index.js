@@ -26,11 +26,15 @@ app.use('/api/payments', require('./routes/payments'));
 // ── Health check ──────────────────────────────────────────
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));
 
+app.get('/',(req,res)=>{
+  res.send("server is running")
+})
+
 // ── 404 handler ───────────────────────────────────────────
 app.use((req, res) => res.status(404).json({ message: 'Route not found' }));
 
 // ── Global error handler ──────────────────────────────────
-app.use((err, req, res, next) => {
+app.use((err, req, res) => {
   console.error(err.stack);
   res.status(500).json({ message: err.message || 'Server error' });
 });
