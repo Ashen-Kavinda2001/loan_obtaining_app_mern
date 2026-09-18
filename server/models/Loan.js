@@ -1,27 +1,76 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/db');
 
-const loanSchema = new mongoose.Schema(
-  {
-    memberId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Member',
-      required: true,
-    },
-    loanAmount:        { type: Number, required: true },
-    interestRate:      { type: Number, required: true, default: 30 },
-    loanDuration:      { type: Number, required: true }, // months
-    startDate:         { type: Date,   required: true },
-    monthlyInstallment:{ type: Number, required: true },
-    totalRepayable:    { type: Number, required: true },
-    paidAmount:        { type: Number, default: 0 },
-    remainingBalance:  { type: Number, required: true },
-    status: {
-      type: String,
-      enum: ['active', 'completed', 'overdue'],
-      default: 'active',
+const Loan = sequelize.define('Loan', {
+  id: {
+    type: DataTypes.INTEGER,
+    autoIncrement: true,
+    primaryKey: true,
+  },
+  _id: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.getDataValue('id');
     },
   },
-  { timestamps: true }
-);
+  memberId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  loanAmount: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: false,
+  },
+  interestRate: {
+    type: DataTypes.DECIMAL(5, 2),
+    defaultValue: 30.00,
+  },
+  loanDuration: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  startDate: {
+    type: DataTypes.DATEONLY,
+    allowNull: false,
+  },
+  monthlyInstallment: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: false,
+  },
+  totalRepayable: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: false,
+  },
+  paidAmount: {
+    type: DataTypes.DECIMAL(12, 2),
+    defaultValue: 0.00,
+  },
+  remainingBalance: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: false,
+  },
+  status: {
+    type: DataTypes.ENUM('active', 'overdue', 'completed'),
+    defaultValue: 'active',
+  },
+  createdBy: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+}, {
+  timestamps: true,
+});
 
-module.exports = mongoose.model('Loan', loanSchema);
+Loan.prototype.toJSON = function () {
+  const values = { ...this.get() };
+  values._id = values.id;
+  values.loanAmount = parseFloat(values.loanAmount || 0);
+  values.interestRate = parseFloat(values.interestRate || 0);
+  values.monthlyInstallment = parseFloat(values.monthlyInstallment || 0);
+  values.totalRepayable = parseFloat(values.totalRepayable || 0);
+  values.paidAmount = parseFloat(values.paidAmount || 0);
+  values.remainingBalance = parseFloat(values.remainingBalance || 0);
+  return values;
+};
+
+module.exports = Loan;

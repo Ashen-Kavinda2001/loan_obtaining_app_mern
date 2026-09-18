@@ -1,12 +1,13 @@
 const express = require('express');
 const router  = express.Router();
 const { getPayments, markPaid, markUnpaid } = require('../controllers/paymentController');
-const { protect } = require('../middleware/auth');
+const { protect, authorize }        = require('../middleware/auth');
+const { financialActionLimiter } = require('../middleware/rateLimiters');
 
 router.use(protect);
 
-router.get('/',              getPayments);        // GET /api/payments?loanId=xxx
-router.patch('/:id/pay',     markPaid);           // PATCH /api/payments/:id/pay
-router.patch('/:id/unpay',   markUnpaid);         // PATCH /api/payments/:id/unpay
+router.get('/',            authorize('admin', 'loan_officer'),                         getPayments);
+router.patch('/:id/pay',   authorize('admin', 'loan_officer'), financialActionLimiter, markPaid);
+router.patch('/:id/unpay', authorize('admin'),                 financialActionLimiter, markUnpaid);
 
 module.exports = router;

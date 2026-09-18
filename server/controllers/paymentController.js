@@ -1,18 +1,26 @@
-const Payment = require('../models/Payment');
-const Loan    = require('../models/Loan');
+const { Op } = require('sequelize');
+const { sequelize, Payment, Loan, Member } = require('../models');
+const { sendPaymentConfirmationSMS } = require('../utils/smsService');
+const { invalidateStatsCache } = require('./loanController');
 
 // @desc    Get payments for a loan
 // @route   GET /api/payments?loanId=xxx
 // @access  Private
-const getPayments = async (req, res) => {
+const getPayments = async (req, res, next) => {
   try {
     const { loanId } = req.query;
-    if (!loanId) return res.status(400).json({ message: 'loanId query param required' });
+    const parsedLoanId = parseInt(loanId, 10);
+    if (!loanId || isNaN(parsedLoanId)) {
+      return res.status(400).json({ message: 'A valid loanId query param is required' });
+    }
 
-    const payments = await Payment.find({ loanId }).sort({ monthNumber: 1 });
+    const payments = await Payment.findAll({
+      where: { loanId: parsedLoanId },
+      order: [['monthNumber', 'ASC']],
+    });
     res.json(payments);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
@@ -23,79 +31,126 @@ const getPayments = async (req, res) => {
 //          reduces the next installment's due amount.
 // @route   PATCH /api/payments/:id/pay
 // @access  Private
-const markPaid = async (req, res) => {
+const markPaid = async (req, res, next) => {
+  const paymentId = parseInt(req.params.id, 10);
+  if (isNaN(paymentId)) {
+    return res.status(400).json({ message: 'Invalid payment ID format' });
+  }
+
+  const amountPaid = parseFloat(req.body.amountPaid);
+  if (isNaN(amountPaid) || amountPaid <= 0) {
+    return res.status(400).json({ message: 'Please provide a valid amount paid' });
+  }
+
   try {
-    const payment = await Payment.findById(req.params.id);
-    if (!payment) return res.status(404).json({ message: 'Payment not found' });
+    let resultPayment = null;
 
-    if (payment.status === 'paid')
-      return res.status(400).json({ message: 'Payment already marked as paid' });
+    await sequelize.transaction(async (t) => {
+      const payment = await Payment.findByPk(paymentId, { transaction: t });
+      if (!payment) {
+        const err = new Error('Payment not found');
+        err.status = 404;
+        throw err;
+      }
 
-    const amountPaid = parseFloat(req.body.amountPaid);
-    if (isNaN(amountPaid) || amountPaid <= 0)
-      return res.status(400).json({ message: 'Please provide a valid amount paid' });
+      if (payment.status === 'paid') {
+        const err = new Error('Payment already marked as paid');
+        err.status = 400;
+        throw err;
+      }
 
-    const now = new Date();
+      const now = new Date();
+      const amountDue = parseFloat(payment.amountDue);
 
-    // ── Step 1: Mark the current installment as paid ─────────
-    payment.status     = 'paid';
-    payment.amountPaid = amountPaid;
-    payment.paidAt     = now;
-    payment.isPartial  = amountPaid < payment.amountDue;
-    payment.isAutoPaid = false;
-    await payment.save();
+      // ── Step 1: Mark the current installment as paid ─────────
+      payment.status     = 'paid';
+      payment.amountPaid = amountPaid;
+      payment.paidAt     = now;
+      payment.isPartial  = amountPaid < amountDue;
+      payment.isAutoPaid = false;
+      await payment.save({ transaction: t });
 
-    // ── Step 2: Calculate excess and cascade forward ─────────
-    let excess = amountPaid - payment.amountDue;
+      // ── Step 2: Calculate excess and cascade forward ─────────
+      let excess = amountPaid - amountDue;
 
-    if (excess > 0) {
-      // Fetch all remaining unpaid installments sorted oldest first
-      const pendingPayments = await Payment.find({
-        loanId: payment.loanId,
-        status: { $in: ['pending', 'overdue'] },
-      }).sort({ monthNumber: 1 });
+      if (excess > 0) {
+        const pendingPayments = await Payment.findAll({
+          where: {
+            loanId: payment.loanId,
+            status: { [Op.in]: ['pending', 'overdue'] },
+          },
+          order: [['monthNumber', 'ASC']],
+          transaction: t,
+        });
 
-      for (const next of pendingPayments) {
-        if (excess <= 0) break;
+        for (const nextP of pendingPayments) {
+          if (excess <= 0) break;
+          const nextDue = parseFloat(nextP.amountDue);
 
-        if (excess >= next.amountDue) {
-          // Excess fully covers this installment → auto-mark as paid
-          next.status     = 'paid';
-          next.amountPaid = next.amountDue;
-          next.paidAt     = now;
-          next.isPartial  = false;
-          next.isAutoPaid = true;   // flagged so UI can show "Auto-paid"
-          excess          = Math.round((excess - next.amountDue) * 100) / 100;
-          await next.save();
-        } else {
-          // Excess partially covers this installment → reduce its due amount
-          next.amountDue = Math.round((next.amountDue - excess) * 100) / 100;
-          excess         = 0;
-          await next.save();
-          break;
+          if (excess >= nextDue) {
+            nextP.status     = 'paid';
+            nextP.amountPaid = nextDue;
+            nextP.paidAt     = now;
+            nextP.isPartial  = false;
+            nextP.isAutoPaid = true;
+            excess           = Math.round((excess - nextDue) * 100) / 100;
+            await nextP.save({ transaction: t });
+          } else {
+            nextP.amountDue = Math.round((nextDue - excess) * 100) / 100;
+            await nextP.save({ transaction: t });
+            break;
+          }
         }
+      }
+
+      // ── Step 3: Sync loan totals ───
+      const loan = await Loan.findByPk(payment.loanId, { transaction: t });
+      if (loan) {
+        const currentPaid = parseFloat(loan.paidAmount || 0);
+        const currentRemaining = parseFloat(loan.remainingBalance || 0);
+
+        loan.paidAmount       = Math.round((currentPaid + amountPaid) * 100) / 100;
+        loan.remainingBalance = Math.max(0, Math.round((currentRemaining - amountPaid) * 100) / 100);
+
+        const pendingCount = await Payment.count({
+          where: {
+            loanId: loan.id,
+            status: { [Op.in]: ['pending', 'overdue'] },
+          },
+          transaction: t,
+        });
+
+        if (pendingCount === 0) loan.status = 'completed';
+
+        await loan.save({ transaction: t });
+      }
+
+      resultPayment = payment;
+    });
+
+    // Fire-and-forget SMS notification outside the transaction
+    if (resultPayment) {
+      const fullLoan = await Loan.findByPk(resultPayment.loanId, {
+        include: [{ model: Member, as: 'member' }],
+      });
+      if (fullLoan && fullLoan.member && fullLoan.member.contactNumber) {
+        sendPaymentConfirmationSMS({
+          memberName:       fullLoan.member.fullName || 'Customer',
+          contactNumber:    fullLoan.member.contactNumber,
+          amountPaid,
+          monthNumber:      resultPayment.monthNumber,
+          remainingBalance: fullLoan.remainingBalance,
+        }).catch((smsErr) => {
+          console.error('⚠️  Failed to dispatch payment confirmation SMS:', smsErr.message);
+        });
       }
     }
 
-    // ── Step 3: Sync loan totals ─────────────────────────────
-    const loan = await Loan.findById(payment.loanId);
-    if (loan) {
-      loan.paidAmount       = Math.round((loan.paidAmount + amountPaid) * 100) / 100;
-      loan.remainingBalance = Math.max(0, Math.round((loan.remainingBalance - amountPaid) * 100) / 100);
+    invalidateStatsCache();
 
-      // If no unpaid installments remain → complete the loan
-      const pendingCount = await Payment.countDocuments({
-        loanId: loan._id,
-        status: { $in: ['pending', 'overdue'] },
-      });
-      if (pendingCount === 0) loan.status = 'completed';
-
-      await loan.save();
-    }
-
-    res.json(payment);
+    res.json(resultPayment);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
@@ -103,39 +158,63 @@ const markPaid = async (req, res) => {
 //          Note: auto-paid cascaded months must be reverted individually if needed.
 // @route   PATCH /api/payments/:id/unpay
 // @access  Private
-const markUnpaid = async (req, res) => {
+const markUnpaid = async (req, res, next) => {
+  const paymentId = parseInt(req.params.id, 10);
+  if (isNaN(paymentId)) {
+    return res.status(400).json({ message: 'Invalid payment ID format' });
+  }
+
   try {
-    const payment = await Payment.findById(req.params.id);
-    if (!payment) return res.status(404).json({ message: 'Payment not found' });
+    let resultPayment = null;
 
-    if (payment.status !== 'paid')
-      return res.status(400).json({ message: 'Payment is not marked as paid' });
+    await sequelize.transaction(async (t) => {
+      const payment = await Payment.findByPk(paymentId, { transaction: t });
+      if (!payment) {
+        const err = new Error('Payment not found');
+        err.status = 404;
+        throw err;
+      }
 
-    const previouslyPaid = payment.amountPaid;
+      if (payment.status !== 'paid') {
+        const err = new Error('Payment is not marked as paid');
+        err.status = 400;
+        throw err;
+      }
 
-    // Revert this payment
-    payment.status     = 'pending';
-    payment.amountPaid = 0;
-    payment.paidAt     = null;
-    payment.isPartial  = false;
-    payment.isAutoPaid = false;
-    await payment.save();
+      const previouslyPaid = parseFloat(payment.amountPaid || 0);
 
-    // Reverse the loan balance
-    const loan = await Loan.findById(payment.loanId);
-    if (loan) {
-      loan.paidAmount       = Math.max(0, Math.round((loan.paidAmount - previouslyPaid) * 100) / 100);
-      loan.remainingBalance = Math.round((loan.remainingBalance + previouslyPaid) * 100) / 100;
+      // Revert this payment
+      payment.status     = 'pending';
+      payment.amountPaid = 0;
+      payment.paidAt     = null;
+      payment.isPartial  = false;
+      payment.isAutoPaid = false;
+      await payment.save({ transaction: t });
 
-      if (loan.status === 'completed') loan.status = 'active';
+      // Reverse the loan balance
+      const loan = await Loan.findByPk(payment.loanId, { transaction: t });
+      if (loan) {
+        const currentPaid = parseFloat(loan.paidAmount || 0);
+        const currentRemaining = parseFloat(loan.remainingBalance || 0);
 
-      await loan.save();
-    }
+        loan.paidAmount       = Math.max(0, Math.round((currentPaid - previouslyPaid) * 100) / 100);
+        loan.remainingBalance = Math.round((currentRemaining + previouslyPaid) * 100) / 100;
 
-    res.json(payment);
+        if (loan.status === 'completed') loan.status = 'active';
+
+        await loan.save({ transaction: t });
+      }
+
+      resultPayment = payment;
+    });
+
+    invalidateStatsCache();
+
+    res.json(resultPayment);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
 module.exports = { getPayments, markPaid, markUnpaid };
+

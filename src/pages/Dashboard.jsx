@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Users, CreditCard, DollarSign, AlertCircle,
+  Users, CreditCard, DollarSign,
   TrendingUp, ArrowUpRight, CheckCircle, PlusCircle
 } from 'lucide-react';
 import client from '../api/client';
@@ -81,20 +81,26 @@ export default function Dashboard() {
             <DollarSign size={22} color="#F59E0B" />
           </div>
           <div className="stat-info">
-            <div className="stat-label">Total Lent</div>
+            <div className="stat-label">Total Len</div>
             <div className="stat-value" style={{ fontSize: 16 }}>{formatCurrency(stats?.totalAmountLent ?? 0)}</div>
             <div className="stat-sub">All time</div>
           </div>
         </div>
 
         <div className="stat-card">
-          <div className="stat-icon" style={{ background: '#FEE2E2' }}>
-            <AlertCircle size={22} color="#EF4444" />
+          <div className="stat-icon" style={{ background: '#DCFCE7' }}>
+            <CheckCircle size={22} color="#16A34A" />
           </div>
           <div className="stat-info">
-            <div className="stat-label">Pending</div>
-            <div className="stat-value">{stats?.pendingPayments ?? 0}</div>
-            <div className="stat-sub">Requires follow-up</div>
+            <div className="stat-label">Received from Members</div>
+            <div className="stat-value" style={{ fontSize: 16 }}>
+              {formatCurrency(
+                stats?.totalReceivedAmount ??
+                stats?.totalAmountReceived ??
+                loans.reduce((sum, l) => sum + parseFloat(l.paidAmount || 0), 0)
+              )}
+            </div>
+            <div className="stat-sub">Total payments collected</div>
           </div>
         </div>
       </div>
@@ -105,11 +111,11 @@ export default function Dashboard() {
         <div className="card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 8 }}>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>Monthly Collections</div>
-              <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Payments received per month</div>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>Weekly Collections</div>
+              <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Payments received per week</div>
             </div>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-success)', display: 'flex', alignItems: 'center', gap: 4 }}>
-              <TrendingUp size={14} />+18% vs last month
+              <TrendingUp size={14} />+18% vs last week
             </div>
           </div>
           <ResponsiveContainer width="100%" height={180}>
@@ -177,7 +183,7 @@ export default function Dashboard() {
                 <th>Member</th>
                 <th>Village</th>
                 <th>Loan Amount</th>
-                <th>Monthly</th>
+                <th>Weekly</th>
                 <th>Balance</th>
                 <th>Status</th>
               </tr>
@@ -212,7 +218,7 @@ export default function Dashboard() {
               </div>
               <div className="mobile-loan-stats">
                 <div><span className="mobile-stat-label">Amount</span><span className="mobile-stat-value">{formatCurrency(loan.loanAmount)}</span></div>
-                <div><span className="mobile-stat-label">Monthly</span><span className="mobile-stat-value">{formatCurrency(loan.monthlyInstallment)}</span></div>
+                <div><span className="mobile-stat-label">Weekly</span><span className="mobile-stat-value">{formatCurrency(loan.monthlyInstallment)}</span></div>
                 <div><span className="mobile-stat-label">Balance</span><span className="mobile-stat-value" style={{ color: 'var(--color-danger)' }}>{formatCurrency(loan.remainingBalance)}</span></div>
               </div>
             </div>

@@ -1,19 +1,55 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/db');
 
-const memberSchema = new mongoose.Schema(
-  {
-    fullName:      { type: String, required: true, trim: true },
-    idNumber:      { type: String, required: true, unique: true, trim: true },
-    village:       { type: String, required: true, trim: true },
-    contactNumber: { type: String, required: true, trim: true },
-    age:           { type: Number, required: true, min: 18, max: 100 },
-    groupId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Group',
-      default: null,
+const Member = sequelize.define('Member', {
+  id: {
+    type: DataTypes.INTEGER,
+    autoIncrement: true,
+    primaryKey: true,
+  },
+  _id: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.getDataValue('id');
     },
   },
-  { timestamps: true }
-);
+  fullName: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+  },
+  idNumber: {
+    type: DataTypes.STRING(100),
+    allowNull: false,
+    unique: true,
+  },
+  village: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+  },
+  contactNumber: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+  },
+  age: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  groupId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  createdBy: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+}, {
+  timestamps: true,
+});
 
-module.exports = mongoose.model('Member', memberSchema);
+Member.prototype.toJSON = function () {
+  const values = { ...this.get() };
+  values._id = values.id;
+  return values;
+};
+
+module.exports = Member;

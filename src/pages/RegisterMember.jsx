@@ -155,19 +155,19 @@ export default function RegisterMember() {
               Personal Information
             </div>
             <div className="form-grid-2">
-              <Field label="Full Name *" placeholder="e.g. Kamal Perera"
+              <Field label="Full Name" placeholder="e.g. Kamal Perera"
                 value={form.fullName} error={errors.fullName} onChange={set('fullName')} />
-              <Field label="NIC Number *" placeholder="e.g. 199012345678"
+              <Field label="NIC Number" placeholder="e.g. 199012345678"
                 value={form.idNumber} error={errors.idNumber} onChange={set('idNumber')} />
             </div>
             <div className="form-grid-2">
-              <Field label="Village / Town *" placeholder="e.g. Matara"
+              <Field label="Village / Town" placeholder="e.g. Matara"
                 value={form.village} error={errors.village} onChange={set('village')} />
-              <Field label="Contact Number *" placeholder="e.g. 077-123-4567"
+              <Field label="Contact Number" placeholder="e.g. 077-123-4567"
                 value={form.contactNumber} error={errors.contactNumber} onChange={set('contactNumber')} />
             </div>
             <div style={{ maxWidth: 200 }}>
-              <Field label="Age *" type="number" placeholder="e.g. 28"
+              <Field label="Age" type="number" placeholder="e.g. 28"
                 value={form.age} error={errors.age} onChange={set('age')} />
             </div>
 
@@ -186,7 +186,7 @@ export default function RegisterMember() {
                       value={form.groupId}
                       onChange={e => setForm(f => ({ ...f, groupId: e.target.value }))}
                     >
-                      <option value="">— No Group (Ungrouped) —</option>
+                      <option value="">No Group (Ungrouped)</option>
                       {groups.map(g => (
                         <option key={g._id} value={g._id}>{g.name}</option>
                       ))}

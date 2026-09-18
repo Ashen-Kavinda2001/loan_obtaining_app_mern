@@ -1,91 +1,109 @@
-const Group  = require('../models/Group');
-const Member = require('../models/Member');
+const { Op } = require('sequelize');
+const { Group, Member } = require('../models');
 
 // @desc    Get all groups with member counts + ungrouped count
 // @route   GET /api/groups
 // @access  Private
-const getGroups = async (req, res) => {
+const getGroups = async (req, res, next) => {
   try {
-    const groups = await Group.find().sort({ createdAt: 1 });
+    const groups = await Group.findAll({ order: [['createdAt', 'ASC']] });
 
     const groupsWithCount = await Promise.all(
       groups.map(async (g) => {
-        const memberCount = await Member.countDocuments({ groupId: g._id });
-        return { ...g.toObject(), memberCount };
+        const memberCount = await Member.count({ where: { groupId: g.id } });
+        return { ...g.toJSON(), memberCount };
       })
     );
 
-    const ungroupedCount = await Member.countDocuments({
-      $or: [{ groupId: null }, { groupId: { $exists: false } }],
+    const ungroupedCount = await Member.count({
+      where: { groupId: null },
     });
 
     res.json({ groups: groupsWithCount, ungroupedCount });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
 // @desc    Create a group
 // @route   POST /api/groups
 // @access  Private
-const createGroup = async (req, res) => {
+const createGroup = async (req, res, next) => {
   try {
     const { name } = req.body;
-    if (!name || !name.trim())
+    if (!name || typeof name !== 'string' || !name.trim())
       return res.status(400).json({ message: 'Group name is required' });
 
-    const exists = await Group.findOne({ name: name.trim() });
+    const cleanName = name.trim();
+    const exists = await Group.findOne({ where: { name: cleanName } });
     if (exists)
       return res.status(400).json({ message: 'A group with this name already exists' });
 
-    const group = await Group.create({ name: name.trim() });
-    res.status(201).json({ ...group.toObject(), memberCount: 0 });
+    const group = await Group.create({ name: cleanName });
+    res.status(201).json({ ...group.toJSON(), memberCount: 0 });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
 // @desc    Rename a group
 // @route   PUT /api/groups/:id
 // @access  Private
-const updateGroup = async (req, res) => {
+const updateGroup = async (req, res, next) => {
   try {
+    const groupId = parseInt(req.params.id, 10);
+    if (isNaN(groupId)) {
+      return res.status(400).json({ message: 'Invalid group ID format' });
+    }
+
     const { name } = req.body;
-    if (!name || !name.trim())
+    if (!name || typeof name !== 'string' || !name.trim())
       return res.status(400).json({ message: 'Group name is required' });
 
-    const group = await Group.findById(req.params.id);
+    const cleanName = name.trim();
+    const group = await Group.findByPk(groupId);
     if (!group) return res.status(404).json({ message: 'Group not found' });
 
-    const duplicate = await Group.findOne({ name: name.trim(), _id: { $ne: group._id } });
+    const duplicate = await Group.findOne({
+      where: {
+        name: cleanName,
+        id: { [Op.ne]: group.id },
+      },
+    });
     if (duplicate)
       return res.status(400).json({ message: 'A group with this name already exists' });
 
-    group.name = name.trim();
-    const updated = await group.save();
-    const memberCount = await Member.countDocuments({ groupId: group._id });
-    res.json({ ...updated.toObject(), memberCount });
+    group.name = cleanName;
+    await group.save();
+    const memberCount = await Member.count({ where: { groupId: group.id } });
+    res.json({ ...group.toJSON(), memberCount });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
 // @desc    Delete a group (members become ungrouped, not deleted)
 // @route   DELETE /api/groups/:id
 // @access  Private
-const deleteGroup = async (req, res) => {
+const deleteGroup = async (req, res, next) => {
   try {
-    const group = await Group.findById(req.params.id);
+    const groupId = parseInt(req.params.id, 10);
+    if (isNaN(groupId)) {
+      return res.status(400).json({ message: 'Invalid group ID format' });
+    }
+
+    const group = await Group.findByPk(groupId);
     if (!group) return res.status(404).json({ message: 'Group not found' });
 
     // Unassign all members in this group
-    await Member.updateMany({ groupId: group._id }, { $set: { groupId: null } });
+    await Member.update({ groupId: null }, { where: { groupId: group.id } });
 
-    await group.deleteOne();
+    await group.destroy();
     res.json({ message: 'Group deleted. Members have been moved to Ungrouped.' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 };
 
 module.exports = { getGroups, createGroup, updateGroup, deleteGroup };
+

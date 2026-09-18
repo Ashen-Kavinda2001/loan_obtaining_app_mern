@@ -10,13 +10,13 @@
  *   ADMIN_PASSWORD — e.g.  a strong password (min 8 chars)
  */
 
-const User = require('./models/User');
+const { User } = require('./models');
 
 const initializeApp = async () => {
   try {
     // Check if any admin user already exists
-    const adminExists = await User.findOne({});
-    if (adminExists) {
+    const adminCount = await User.count();
+    if (adminCount > 0) {
       console.log('ℹ️  Admin already exists. Skipping initialization.');
       return;
     }
@@ -48,3 +48,4 @@ const initializeApp = async () => {
 };
 
 module.exports = initializeApp;
+

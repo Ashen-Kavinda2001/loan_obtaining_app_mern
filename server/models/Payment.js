@@ -1,26 +1,64 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/db');
 
-const paymentSchema = new mongoose.Schema(
-  {
-    loanId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Loan',
-      required: true,
-    },
-    monthNumber: { type: Number, required: true },
-    amountDue:   { type: Number, required: true },
-    amountPaid:  { type: Number, default: 0 },
-    dueDate:     { type: Date,   required: true },
-    paidAt:      { type: Date,   default: null },
-    isPartial:   { type: Boolean, default: false },
-    isAutoPaid:  { type: Boolean, default: false },
-    status: {
-      type: String,
-      enum: ['pending', 'paid', 'overdue'],
-      default: 'pending',
+const Payment = sequelize.define('Payment', {
+  id: {
+    type: DataTypes.INTEGER,
+    autoIncrement: true,
+    primaryKey: true,
+  },
+  _id: {
+    type: DataTypes.VIRTUAL,
+    get() {
+      return this.getDataValue('id');
     },
   },
-  { timestamps: true }
-);
+  loanId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  monthNumber: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  amountDue: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: false,
+  },
+  amountPaid: {
+    type: DataTypes.DECIMAL(12, 2),
+    defaultValue: 0.00,
+  },
+  dueDate: {
+    type: DataTypes.DATEONLY,
+    allowNull: false,
+  },
+  paidAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+  status: {
+    type: DataTypes.ENUM('pending', 'paid', 'overdue'),
+    defaultValue: 'pending',
+  },
+  isPartial: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  isAutoPaid: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+}, {
+  timestamps: true,
+});
 
-module.exports = mongoose.model('Payment', paymentSchema);
+Payment.prototype.toJSON = function () {
+  const values = { ...this.get() };
+  values._id = values.id;
+  values.amountDue = parseFloat(values.amountDue || 0);
+  values.amountPaid = parseFloat(values.amountPaid || 0);
+  return values;
+};
+
+module.exports = Payment;

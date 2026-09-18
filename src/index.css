@@ -494,11 +494,32 @@ tbody tr:hover { background: #F8FAFC; }
 }
 
 /* ============================================
+   LOAN CARD HEADER (label + date + delete btn)
+   ============================================ */
+.loan-card-label-row {
+  padding: 8px 20px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ============================================
+   MEMBER PROFILE HEADER PILLS
+   ============================================ */
+.member-header-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ============================================
    RESPONSIVE — ≤ 768px
    ============================================ */
 @media (max-width: 768px) {
   .main-content  { margin-left: 0; }
-  .page-content  { padding: 16px; }
+  .page-content  { padding: 16px 12px; }
   .form-grid-2   { grid-template-columns: 1fr; }
   .stat-grid     { grid-template-columns: 1fr 1fr; }
 
@@ -513,8 +534,38 @@ tbody tr:hover { background: #F8FAFC; }
   .hide-on-mobile { display: none !important; }
   .show-on-mobile { display: block !important; }
 
-  /* Loan stats: 2x2 grid on mobile */
-  .loan-stats-grid { grid-template-columns: 1fr 1fr; }
+  /* Loan stats: 2-col on mobile, last odd item spans full width */
+  .loan-stats-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .loan-stats-grid .loan-stat-item:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  /* Loan card label row: wrap cleanly on small screens */
+  .loan-card-label-row {
+    padding: 8px 12px 0;
+    flex-wrap: wrap;
+  }
+
+  /* Payment table: horizontal scroll on mobile */
+  .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .table-wrapper table {
+    min-width: 480px;
+  }
+
+  /* Member header: stack pills below name on mobile */
+  .member-header-pills {
+    width: 100%;
+  }
+
+  /* Loan summary click row padding */
+  .loan-summary-row {
+    padding: 10px 12px 12px;
+  }
 
   /* Mobile loan stats: 3-col → 3-col still ok but smaller text */
   .mobile-stat-label { font-size: 9px; }

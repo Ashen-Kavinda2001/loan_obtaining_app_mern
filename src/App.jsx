@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import './index.css';
 import './App.css';
@@ -13,7 +13,7 @@ import LoanDetails    from './pages/LoanDetails';
 import Login          from './pages/Login';
 import AccountSettings from './pages/AccountSettings';
 
-function AppShell({ onLogout }) {
+function AppShell({ onLogout, user }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const closeSidebar = () => setSidebarOpen(false);
@@ -29,10 +29,11 @@ function AppShell({ onLogout }) {
         isOpen={sidebarOpen}
         onClose={closeSidebar}
         onLogout={onLogout}
+        user={user}
       />
 
       <div className="main-content">
-        <Topbar onMenuToggle={toggleSidebar} />
+        <Topbar onMenuToggle={toggleSidebar} user={user} />
         <Routes>
           <Route path="/"           element={<Dashboard />} />
           <Route path="/members"    element={<MemberList />} />
@@ -47,24 +48,80 @@ function AppShell({ onLogout }) {
   );
 }
 
+import client from './api/client';
+
 export default function App() {
-  // Persist login: read token from localStorage on mount
-  const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem('token'));
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser]             = useState(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
 
-  const handleLogin = (token) => {
-    localStorage.setItem('token', token);
+  // Verify HttpOnly session cookie on initial app load
+  useEffect(() => {
+    client
+      .get('/auth/me')
+      .then((res) => {
+        setIsLoggedIn(true);
+        setUser(res.data);
+      })
+      .catch(() => {
+        setIsLoggedIn(false);
+        setUser(null);
+      })
+      .finally(() => setCheckingAuth(false));
+  }, []);
+
+  const handleLogin = (userData) => {
     setIsLoggedIn(true);
+    if (userData && userData.email) {
+      setUser(userData);
+    } else {
+      client.get('/auth/me').then(res => setUser(res.data)).catch(() => {});
+    }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    setIsLoggedIn(false);
+  const handleLogout = async () => {
+    try {
+      await client.post('/auth/logout');
+    } catch {
+      // Ignore network errors on logout
+    } finally {
+      setIsLoggedIn(false);
+      setUser(null);
+    }
   };
+
+  if (checkingAuth) {
+    return (
+      <div style={{
+        display: 'flex',
+        height: '100vh',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#0F172A',
+        color: '#94A3B8',
+        fontFamily: 'Inter, sans-serif'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: 36,
+            height: 36,
+            border: '3px solid rgba(255,255,255,0.1)',
+            borderTopColor: '#38BDF8',
+            borderRadius: '50%',
+            animation: 'spin 0.8s linear infinite',
+            margin: '0 auto 14px'
+          }} />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          <div style={{ fontSize: 13, fontWeight: 500 }}>Securing session…</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <BrowserRouter>
       {isLoggedIn
-        ? <AppShell onLogout={handleLogout} />
+        ? <AppShell onLogout={handleLogout} user={user} />
         : <Routes>
             <Route path="*" element={<Login onLogin={handleLogin} />} />
           </Routes>

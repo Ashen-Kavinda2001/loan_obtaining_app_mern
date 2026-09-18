@@ -36,10 +36,10 @@ export default function GrantLoan() {
     const rate = parseFloat(form.interestRate) || 0;
     if (amt > 0 && dur > 0) {
       const total   = amt * (1 + rate / 100);
-      const monthly = total / dur;
-      return { total: Math.round(total), monthly: Math.round(monthly) };
+      const weekly = total / dur;
+      return { total: Math.round(total), weekly: Math.round(weekly) };
     }
-    return { total: 0, monthly: 0 };
+    return { total: 0, weekly: 0 };
   }, [form.loanAmount, form.loanDuration, form.interestRate]);
 
   const validate = () => {
@@ -118,7 +118,7 @@ export default function GrantLoan() {
                   onChange={e => { setForm({ ...form, memberId: e.target.value }); setErrors({ ...errors, memberId: '' }); }}
                   style={errors.memberId ? { borderColor: 'var(--color-danger)' } : {}}
                 >
-                  <option value="">-- Choose a member --</option>
+                  <option value="">Choose a member</option>
                   {members.map(m => (
                     <option key={m._id} value={m._id}>{m.fullName} — {m.village}</option>
                   ))}
@@ -135,7 +135,7 @@ export default function GrantLoan() {
               )}
 
               <div className="form-grid-2">
-                <Field label="Loan Amount (Rs.) *" error={errors.loanAmount}>
+                <Field label="Loan Amount (Rs.)" error={errors.loanAmount}>
                   <input type="number" className="form-control" placeholder="e.g. 50000"
                     value={form.loanAmount}
                     onChange={e => { setForm({ ...form, loanAmount: e.target.value }); setErrors({ ...errors, loanAmount: '' }); }}
@@ -149,14 +149,14 @@ export default function GrantLoan() {
                   <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Flat rate over full term</span>
                 </Field>
 
-                <Field label="Duration (Months) *" error={errors.loanDuration}>
+                <Field label="Duration (Weeks)" error={errors.loanDuration}>
                   <input type="number" className="form-control" placeholder="e.g. 12"
                     value={form.loanDuration}
                     onChange={e => { setForm({ ...form, loanDuration: e.target.value }); setErrors({ ...errors, loanDuration: '' }); }}
                     style={errors.loanDuration ? { borderColor: 'var(--color-danger)' } : {}} />
                 </Field>
 
-                <Field label="Start Date *" error={errors.startDate}>
+                <Field label="Start Date" error={errors.startDate}>
                   <input type="date" className="form-control"
                     value={form.startDate}
                     onChange={e => { setForm({ ...form, startDate: e.target.value }); setErrors({ ...errors, startDate: '' }); }}
@@ -186,7 +186,7 @@ export default function GrantLoan() {
               {[
                 { label: 'Loan Amount',  value: form.loanAmount   ? formatCurrency(form.loanAmount)   : '—' },
                 { label: 'Interest Rate', value: form.interestRate ? `${form.interestRate}%`            : '—' },
-                { label: 'Duration',      value: form.loanDuration ? `${form.loanDuration} months`      : '—' },
+                { label: 'Duration',      value: form.loanDuration ? `${form.loanDuration} weeks`      : '—' },
               ].map(({ label, value }) => (
                 <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
                   <span style={{ color: 'var(--color-text-muted)' }}>{label}</span>
@@ -204,17 +204,18 @@ export default function GrantLoan() {
               </div>
 
               <div style={{ background: 'linear-gradient(135deg, #4F46E5, #818CF8)', borderRadius: 'var(--radius-md)', padding: '16px', textAlign: 'center', color: '#fff' }}>
-                <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Monthly Installment</div>
+                <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Weekly Installment</div>
                 <div style={{ fontSize: 26, fontWeight: 800 }}>
-                  {calc.monthly ? formatCurrency(calc.monthly) : '—'}
+                  {calc.weekly ? formatCurrency(calc.weekly) : '—'}
                 </div>
-                {form.loanDuration > 0 && <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>× {form.loanDuration} months</div>}
+                {form.loanDuration > 0 && <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>× {form.loanDuration} weeks</div>}
               </div>
 
               {calc.total > 0 && (
                 <div style={{ fontSize: 12, color: 'var(--color-text-muted)', textAlign: 'center', lineHeight: 1.6 }}>
                   Interest charged: {formatCurrency(calc.total - (parseFloat(form.loanAmount) || 0))}
-                  <br />({form.interestRate}% flat rate applied)
+                 
+                 
                 </div>
               )}
             </div>

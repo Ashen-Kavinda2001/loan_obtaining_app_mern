@@ -26,6 +26,11 @@ const createTransporter = () => {
     host: process.env.EMAIL_HOST,
     port: parseInt(process.env.EMAIL_PORT || '587', 10),
     secure: false,
+    requireTLS: true, // Prevent opportunistic STARTTLS downgrade attacks
+    tls: {
+      minVersion: 'TLSv1.2',
+      rejectUnauthorized: true,
+    },
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
@@ -39,6 +44,20 @@ const createTransporter = () => {
  * @param {string} otp      - 6-digit code
  */
 const sendOtpEmail = async (toEmail, otp) => {
+  // Guard: detect unconfigured / placeholder credentials early
+  const user = process.env.EMAIL_USER || '';
+  const pass = process.env.EMAIL_PASS || '';
+  if (
+    !user || user.includes('your-gmail') ||
+    !pass || pass.includes('xxxx')
+  ) {
+    const msg =
+      'Email is not configured. Set EMAIL_USER and EMAIL_PASS (Gmail App Password) in server/.env. ' +
+      'See: myaccount.google.com → Security → 2-Step Verification → App passwords';
+    console.error('[mailer] ' + msg);
+    throw new Error('Email service is not configured on the server. Please contact the administrator.');
+  }
+
   const transporter = createTransporter();
 
   const mailOptions = {
