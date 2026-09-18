@@ -1,0 +1,57 @@
+name: CI/CD Pipeline - Deploy to cPanel
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy to cPanel
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: ⬇️ Checkout Repository Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: 🟢 Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 📦 Install Frontend Dependencies
+        run: npm ci
+
+      - name: 🏗️ Build Frontend (React + Vite)
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: https://fgiloans.lk/api
+
+      - name: 🚀 Deploy Frontend (dist) to cPanel public_html
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./dist/
+          server-dir: ./public_html/
+          dangerous-clean-slate: false
+
+      - name: 🚀 Deploy Backend to cPanel backend folder
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./server/
+          server-dir: ./backend/
+          dangerous-clean-slate: false
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/.env*
+            **/tmp/**
