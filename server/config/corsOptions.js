@@ -11,10 +11,21 @@ const allowedOrigins = rawOrigins
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-// In development, default to local Vite dev server if CORS_ORIGIN is unset
-if (process.env.NODE_ENV !== 'production' && allowedOrigins.length === 0) {
-  allowedOrigins.push('http://localhost:5173');
-}
+// Always allow production domain variants and local development
+const defaultOrigins = [
+  'https://fgiloans.lk',
+  'http://fgiloans.lk',
+  'https://www.fgiloans.lk',
+  'http://www.fgiloans.lk',
+  'http://localhost:5173',
+  'http://localhost:5000',
+];
+
+defaultOrigins.forEach((orig) => {
+  if (!allowedOrigins.includes(orig)) {
+    allowedOrigins.push(orig);
+  }
+});
 
 const corsOptions = {
   origin: (origin, callback) => {
