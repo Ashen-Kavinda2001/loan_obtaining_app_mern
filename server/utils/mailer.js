@@ -29,6 +29,9 @@ const createTransporter = () => {
     host: process.env.EMAIL_HOST,
     port: port,
     secure: isSecure,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
     tls: {
       rejectUnauthorized: false, // Accepts local cPanel server certificate
     },
