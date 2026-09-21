@@ -67,15 +67,6 @@ jobs:
             **/node_modules/**
             **/.env*
             **/tmp/**
-
-      - name: 📦 Install Backend Dependencies & Restart App via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: ${{ secrets.SSH_PORT }}
-          script: |
-            cd ~/backend
-            npm install --omit=dev --prefer-offline
-            echo "✅ Backend dependencies installed successfully"
+      # NOTE: After pipeline runs, go to cPanel → Setup Node.js App → Restart
+      # to apply any new backend changes. Run npm install manually from cPanel
+      # Terminal only when adding new npm packages.
