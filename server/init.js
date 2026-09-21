@@ -14,23 +14,11 @@ const { User } = require('./models');
 
 const initializeApp = async () => {
   try {
-    // Check if any admin user already exists
-    const adminCount = await User.count();
-    if (adminCount > 0) {
-      console.log('ℹ️  Admin already exists. Skipping initialization.');
-      return;
-    }
-
-    // Read credentials from environment variables
     const email    = process.env.ADMIN_EMAIL;
     const password = process.env.ADMIN_PASSWORD;
 
     if (!email || !password) {
-      console.warn(
-        '⚠️  WARNING: No admin user found, but ADMIN_EMAIL / ADMIN_PASSWORD ' +
-        'are not set in .env. Skipping auto-initialization.\n' +
-        '   Set these variables and restart the server to create the first admin.'
-      );
+      console.warn('⚠️  ADMIN_EMAIL / ADMIN_PASSWORD not configured in .env');
       return;
     }
 
@@ -39,9 +27,23 @@ const initializeApp = async () => {
       return;
     }
 
-    await User.create({ email, password });
-    console.log(`✅ First admin user created: ${email}`);
-    console.log('   ⚠️  Please change your password after first login!');
+    const normalizedEmail = email.toLowerCase().trim();
+    let admin = await User.findOne({ where: { email: normalizedEmail } });
+    if (!admin) {
+      admin = await User.findOne({ where: { role: 'admin' } });
+    }
+
+    if (!admin) {
+      await User.create({ email: normalizedEmail, password, role: 'admin' });
+      console.log(`✅ First admin user created: ${normalizedEmail}`);
+    } else {
+      // Sync admin credentials directly from .env (beforeSave hook will re-hash with bcrypt)
+      admin.email = normalizedEmail;
+      admin.password = password;
+      admin.tokenVersion = (admin.tokenVersion || 0) + 1;
+      await admin.save();
+      console.log(`✅ Admin credentials synchronized from .env for: ${normalizedEmail}`);
+    }
   } catch (err) {
     console.error('❌ Initialization error:', err.message);
   }

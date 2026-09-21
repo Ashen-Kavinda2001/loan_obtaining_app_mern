@@ -9,14 +9,16 @@ const generateToken = (user) =>
     { algorithm: 'HS256', expiresIn: '7d' }
   );
 
-const isProduction = process.env.NODE_ENV === 'production';
+// COOKIE_SECURE must be explicitly set to 'true' in .env to enable HTTPS-only cookies.
+// Decoupled from NODE_ENV so HTTP deployments (cPanel temp IP, HTTP-only sites) still work.
+const isCookieSecure = process.env.COOKIE_SECURE === 'true';
 
 // Cookie configuration for HttpOnly session tokens
 const COOKIE_OPTIONS = {
   httpOnly: true,                                // Inaccessible to client-side JavaScript (defeats XSS theft)
-  secure:   isProduction,                        // Enforce HTTPS transmission in production (required for sameSite: 'none')
-  sameSite: isProduction ? 'strict' : 'lax',       // 'strict' for same-domain cPanel deployment; 'lax' in dev for HTTP
-  maxAge:   7 * 24 * 60 * 60 * 1000,             // 7 days
+  secure:   isCookieSecure,                      // Only send over HTTPS when COOKIE_SECURE=true in .env
+  sameSite: isCookieSecure ? 'strict' : 'lax',  // 'strict' with HTTPS; 'lax' for HTTP fallback
+  maxAge:   7 * 24 * 60 * 60 * 1000,            // 7 days
   path:     '/',
 };
 

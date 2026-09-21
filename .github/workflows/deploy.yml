@@ -30,6 +30,7 @@ jobs:
         env:
           VITE_API_BASE_URL: https://fgiloans.lk/api
 
+      # ── Deploy Frontend ────────────────────────────────────────────────────────
       - name: 🚀 Deploy Frontend (dist) to cPanel public_html
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -40,6 +41,17 @@ jobs:
           server-dir: ./public_html/
           dangerous-clean-slate: false
 
+      - name: 📄 Deploy .htaccess for React Router SPA fallback
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./.github/static/
+          server-dir: ./public_html/
+          dangerous-clean-slate: false
+
+      # ── Deploy Backend ─────────────────────────────────────────────────────────
       - name: 🚀 Deploy Backend to cPanel backend folder
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -55,3 +67,15 @@ jobs:
             **/node_modules/**
             **/.env*
             **/tmp/**
+
+      - name: 📦 Install Backend Dependencies & Restart App via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            cd ~/backend
+            npm install --omit=dev --prefer-offline
+            echo "✅ Backend dependencies installed successfully"

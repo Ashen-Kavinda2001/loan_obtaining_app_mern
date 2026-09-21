@@ -11,12 +11,14 @@ const allowedOrigins = rawOrigins
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-// Always allow production domain variants and local development
+// Always allow production domain variants, temp IP (during DNS propagation), and local dev
 const defaultOrigins = [
   'https://fgiloans.lk',
   'http://fgiloans.lk',
   'https://www.fgiloans.lk',
   'http://www.fgiloans.lk',
+  // ZirconHost temporary URL — active during DNS propagation (up to 48h after domain setup)
+  'http://49.12.121.200',
   'http://localhost:5173',
   'http://localhost:5000',
 ];

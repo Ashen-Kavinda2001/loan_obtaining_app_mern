@@ -25,8 +25,10 @@ connectDB()
 
 const app = express();
 
-// ── Reverse Proxy Trust (Required for Render, Heroku, Cloudflare, ALB) ───
-app.set('trust proxy', 1);
+// ── Reverse Proxy Trust ─────────────────────────────────────────────────────
+// Disabled for cPanel Passenger — Passenger handles its own proxy headers.
+// Re-enable with app.set('trust proxy', 1) only if moving to Nginx/Render/Heroku.
+// app.set('trust proxy', 1);
 
 // ── Security Headers & Hardening ──────────────────────────
 const helmet        = require('helmet');
