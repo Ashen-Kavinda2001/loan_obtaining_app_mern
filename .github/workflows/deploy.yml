@@ -38,7 +38,7 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./dist/
-          server-dir: ./public_html/
+          server-dir: /public_html/
           dangerous-clean-slate: false
 
       - name: 📄 Deploy .htaccess for React Router SPA fallback
@@ -48,7 +48,7 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./.github/static/
-          server-dir: ./public_html/
+          server-dir: /public_html/
           dangerous-clean-slate: false
 
       # ── Deploy Backend ─────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./server/
-          server-dir: ./backend/
+          server-dir: /backend/
           dangerous-clean-slate: false
           exclude: |
             **/.git*
