@@ -31,6 +31,8 @@ jobs:
           VITE_API_BASE_URL: https://fgiloans.lk/api
 
       # ── Deploy Frontend ────────────────────────────────────────────────────────
+      # Note: Vite automatically copies public/.htaccess into dist/.htaccess at build time.
+      # A single sync step prevents FTP-Deploy-Action from deleting files.
       - name: 🚀 Deploy Frontend (dist) to cPanel public_html
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -38,16 +40,6 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./dist/
-          server-dir: /public_html/
-          dangerous-clean-slate: false
-
-      - name: 📄 Deploy .htaccess for React Router SPA fallback
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./.github/static/
           server-dir: /public_html/
           dangerous-clean-slate: false
 
