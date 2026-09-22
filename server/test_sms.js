@@ -2,7 +2,7 @@
  * test_sms.js — Verification script for text.lk SMS utility.
  */
 require('dotenv').config();
-const { formatPhoneNumber, sendSMS, sendPaymentConfirmationSMS } = require('./utils/smsService');
+const { formatPhoneNumber, sendPaymentConfirmationSMS } = require('./utils/smsService');
 
 console.log('--- Testing formatPhoneNumber ---');
 const testNumbers = [
