@@ -8,22 +8,23 @@ const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
 // ── Rate Limiters ──────────────────────────────────────────
-// Limit login attempts: 30 attempts per 30 minutes per IP (brute-force defense)
-// Single-admin system — limit is relaxed to avoid accidental lockouts during normal use.
+// Relaxed limits with validate: false to prevent cPanel Passenger proxy exceptions
 const loginLimiter = rateLimit({
-  windowMs: 30 * 60 * 1000,
-  max: 30,
+  windowMs: 15 * 60 * 1000,
+  max: 100, // 100 attempts per 15 min
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: 'Too many login attempts. Please try again after 30 minutes.' },
+  validate: false,
+  message: { message: 'Too many login attempts. Please try again after 15 minutes.' },
 });
 
-// Limit password reset requests: 5 per 15 min per IP
+// Password reset requests: 50 per 15 min per IP
 const resetLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 50,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: false,
   message: { message: 'Too many password reset requests. Please try again after 15 minutes.' },
 });
 

@@ -20,9 +20,13 @@ const sequelize = new Sequelize(connectionUri, {
       },
   pool: {
     max: 5,   // Conservative limit for shared hosting (cPanel MySQL connection limits)
-    min: 1,
+    min: 0,   // Do not hold idle connections open — prevents stale socket dropouts after hours of inactivity
     acquire: 30000,
     idle: 10000,
+    evict: 10000, // Periodically cleans up dead connections
+  },
+  retry: {
+    max: 3,   // Automatically retry transient connection dropouts
   },
 });
 
