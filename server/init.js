@@ -45,6 +45,11 @@ const initializeApp = async () => {
     let admin = await User.findOne({ where: { email: normalizedEmail } });
     if (!admin) {
       admin = await User.findOne({ where: { role: 'admin' } });
+      if (admin && admin.email !== normalizedEmail) {
+        console.log(`ℹ️ Updating admin email from "${admin.email}" to "${normalizedEmail}"`);
+        admin.email = normalizedEmail;
+        await admin.save();
+      }
     }
 
     if (!admin) {
@@ -55,9 +60,8 @@ const initializeApp = async () => {
       // ── Admin already exists in database ────────────────────────────────────
       if (process.env.RESET_ADMIN_ON_BOOT === 'true') {
         // Emergency override: force credentials back to .env values
-        // beforeSave hook will re-hash the password with bcrypt automatically
         admin.email         = normalizedEmail;
-        admin.password      = password;
+        admin.password      = password; // User beforeSave will hash safely without double-hash
         admin.tokenVersion  = (admin.tokenVersion || 0) + 1; // revoke all active sessions
         await admin.save();
         console.log(`🔄 Admin credentials force-reset from .env for: ${normalizedEmail}`);

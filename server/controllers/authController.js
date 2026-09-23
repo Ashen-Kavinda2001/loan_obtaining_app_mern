@@ -130,11 +130,10 @@ const updateCredentials = async (req, res, next) => {
 // @access  Private
 const logout = async (req, res, next) => {
   try {
-    const userId = req.user.id || req.user._id;
-    const user = await User.findByPk(userId);
-    if (user) {
-      user.tokenVersion = (user.tokenVersion || 0) + 1;
-      await user.save();
+    const userId = req.user?.id || req.user?._id;
+    if (userId) {
+      // Atomic increment on tokenVersion — avoids touching password or triggering beforeSave hooks
+      await User.increment('tokenVersion', { by: 1, where: { id: userId } });
     }
     // Clear the HttpOnly session cookie
     res.clearCookie('token', { ...COOKIE_OPTIONS, maxAge: 0 });

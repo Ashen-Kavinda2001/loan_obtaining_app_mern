@@ -39,7 +39,13 @@ const User = sequelize.define('User', {
   hooks: {
     beforeSave: async (user) => {
       if (user.changed('password')) {
-        user.password = await bcrypt.hash(user.password, 10);
+        // Prevent double-hashing if password is already a valid bcrypt hash
+        const isBcryptHash =
+          typeof user.password === 'string' &&
+          /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(user.password);
+        if (!isBcryptHash) {
+          user.password = await bcrypt.hash(user.password, 10);
+        }
       }
     },
   },

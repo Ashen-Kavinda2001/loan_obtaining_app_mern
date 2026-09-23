@@ -345,6 +345,7 @@ export default function Login({ onLogin }) {
                   <input
                     type="email" className="form-control" placeholder="admin@example.com"
                     value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
+                    autoComplete="username"
                   />
                 </div>
 
@@ -362,6 +363,7 @@ export default function Login({ onLogin }) {
                       type={showPass ? 'text' : 'password'} className="form-control" placeholder="Enter your password"
                       value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
                       style={{ paddingRight: 40 }}
+                      autoComplete="current-password"
                     />
                     <button type="button"
                       style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
