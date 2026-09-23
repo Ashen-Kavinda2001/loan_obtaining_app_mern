@@ -5,8 +5,12 @@ const client = axios.create({
   withCredentials: true, // Enables browser to automatically transmit HttpOnly session cookies
 });
 
-// Clean request interceptor: cookies are sent automatically via withCredentials: true
+// Automatically attach Bearer token from localStorage (works across all browsers, PWAs, & devices)
 client.interceptors.request.use((config) => {
+  const token = localStorage.getItem('fgi_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
 
@@ -20,6 +24,8 @@ client.interceptors.response.use(
     const isLoginCall = error.config?.url?.includes('/auth/login');
 
     if (error.response?.status === 401 && !isCredentialUpdate && !isAuthCheck && !isLoginCall) {
+      localStorage.removeItem('fgi_token');
+      localStorage.removeItem('fgi_user');
       if (window.location.pathname !== '/') {
         window.location.href = '/';
       }

@@ -51,31 +51,51 @@ function AppShell({ onLogout, user }) {
 import client from './api/client';
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [user, setUser]             = useState(null);
-  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    return Boolean(localStorage.getItem('fgi_token') && localStorage.getItem('fgi_user'));
+  });
+  const [user, setUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fgi_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [checkingAuth, setCheckingAuth] = useState(() => {
+    // If we already have a saved session, we don't block the UI with full-screen spinner
+    return !localStorage.getItem('fgi_token');
+  });
 
-  // Verify HttpOnly session cookie on initial app load
+  // Verify session in background on app load
   useEffect(() => {
     client
       .get('/auth/me')
       .then((res) => {
         setIsLoggedIn(true);
         setUser(res.data);
+        localStorage.setItem('fgi_user', JSON.stringify(res.data));
       })
-      .catch(() => {
-        setIsLoggedIn(false);
-        setUser(null);
+      .catch((err) => {
+        // Only log out if backend explicitly rejected with 401 Unauthorized
+        if (err.response?.status === 401) {
+          localStorage.removeItem('fgi_token');
+          localStorage.removeItem('fgi_user');
+          setIsLoggedIn(false);
+          setUser(null);
+        }
       })
       .finally(() => setCheckingAuth(false));
   }, []);
 
   const handleLogin = (userData) => {
     setIsLoggedIn(true);
-    if (userData && userData.email) {
+    if (userData) {
+      if (userData.token) {
+        localStorage.setItem('fgi_token', userData.token);
+      }
+      localStorage.setItem('fgi_user', JSON.stringify(userData));
       setUser(userData);
-    } else {
-      client.get('/auth/me').then(res => setUser(res.data)).catch(() => {});
     }
   };
 
@@ -85,6 +105,8 @@ export default function App() {
     } catch {
       // Ignore network errors on logout
     } finally {
+      localStorage.removeItem('fgi_token');
+      localStorage.removeItem('fgi_user');
       setIsLoggedIn(false);
       setUser(null);
     }

@@ -254,14 +254,29 @@ export default function Login({ onLogin }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!form.email || !form.password) { setError('Please fill in all fields.'); return; }
+    const trimmedEmail = form.email ? form.email.trim() : '';
+    if (!trimmedEmail || !form.password) {
+      setError('Please fill in all fields.');
+      return;
+    }
 
     setLoading(true);
     try {
-      const { data } = await client.post('/auth/login', form);
+      const { data } = await client.post('/auth/login', {
+        email: trimmedEmail,
+        password: form.password,
+      });
       onLogin(data);
     } catch (err) {
-      setError(err.response?.data?.message || 'Invalid email or password.');
+      console.error('Login failure:', err);
+      const serverMsg = err.response?.data?.message;
+      if (serverMsg) {
+        setError(serverMsg);
+      } else if (err.code === 'ERR_NETWORK' || !err.response) {
+        setError('Cannot connect to server. Please check your internet connection.');
+      } else {
+        setError('Invalid email or password. Please check your credentials.');
+      }
     } finally {
       setLoading(false);
     }

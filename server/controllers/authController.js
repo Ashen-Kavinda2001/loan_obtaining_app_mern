@@ -47,6 +47,7 @@ const login = async (req, res, next) => {
       id:    user.id,
       email: user.email,
       role:  user.role,
+      token, // Return token for persistent client-side storage & Bearer header
     });
   } catch (err) {
     next(err);
@@ -117,6 +118,7 @@ const updateCredentials = async (req, res, next) => {
       id:    user.id,
       email: user.email,
       role:  user.role,
+      token: freshToken,
     });
   } catch (err) {
     next(err);
