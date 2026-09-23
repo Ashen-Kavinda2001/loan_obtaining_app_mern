@@ -31,7 +31,20 @@ function ForgotPassword({ onBack }) {
       await client.post('/auth/forgot-password', { email: email.trim() });
       setStep(2);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to send OTP. Please try again.');
+      console.error('OTP request failed:', err);
+      const status = err.response?.status;
+      const serverMsg = err.response?.data?.message;
+      if (serverMsg) {
+        setError(serverMsg);
+      } else if (status === 502 || status === 503) {
+        setError(`Backend server is not running (${status} Bad Gateway). Please check the Node.js app in cPanel.`);
+      } else if (status) {
+        setError(`Server error ${status}. Please check backend logs.`);
+      } else if (err.code === 'ERR_NETWORK' || !err.response) {
+        setError('Cannot reach server. Please check your internet connection or if the backend is running.');
+      } else {
+        setError('Failed to send OTP. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -269,11 +282,18 @@ export default function Login({ onLogin }) {
       onLogin(data);
     } catch (err) {
       console.error('Login failure:', err);
+      const status = err.response?.status;
       const serverMsg = err.response?.data?.message;
       if (serverMsg) {
         setError(serverMsg);
+      } else if (status === 502 || status === 503) {
+        setError(`Backend server is not running (${status} Bad Gateway). Please check Node.js app in cPanel.`);
+      } else if (status === 401) {
+        setError('Invalid email or password. Please check your credentials.');
+      } else if (status) {
+        setError(`Server error ${status}. Please check backend logs.`);
       } else if (err.code === 'ERR_NETWORK' || !err.response) {
-        setError('Cannot connect to server. Please check your internet connection.');
+        setError('Cannot reach server. Please check your internet connection or if backend is running.');
       } else {
         setError('Invalid email or password. Please check your credentials.');
       }
