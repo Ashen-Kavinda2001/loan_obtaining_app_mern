@@ -28,7 +28,7 @@ jobs:
       - name: 🏗️ Build Frontend (React + Vite)
         run: npm run build
         env:
-          VITE_API_BASE_URL: https://fgiloans.lk/api
+          VITE_API_BASE_URL: /api
 
       # ── Deploy Frontend ────────────────────────────────────────────────────────
       # Note: Vite automatically copies public/.htaccess into dist/.htaccess at build time.

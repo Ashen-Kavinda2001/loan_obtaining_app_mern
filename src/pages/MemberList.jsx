@@ -62,7 +62,7 @@ export default function MemberList() {
     setLoading(true);
     try {
       let url = '/members';
-      if (context && context !== 'ungrouped') url += `?groupId=${context._id}`;
+      if (context && context !== 'ungrouped') url += `?groupId=${context.id || context._id}`;
       else if (context === 'ungrouped')        url += '?ungrouped=true';
       const { data } = await client.get(url);
       setMembers(data);

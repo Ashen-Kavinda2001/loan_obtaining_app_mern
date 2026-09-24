@@ -1,9 +1,18 @@
 import axios from 'axios';
 
+// In production or browser, use relative '/api' so requests always match the exact host
+// (fgiloans.lk or www.fgiloans.lk) without CORS preflights or cross-origin restrictions.
+const getBaseURL = () => {
+  if (import.meta.env.DEV) {
+    return import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+  }
+  return '/api';
+};
+
 const client = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api',
+  baseURL: getBaseURL(),
   withCredentials: true, // Enables browser to automatically transmit HttpOnly session cookies
-  timeout: 20000,        // 20-second safety timeout to avoid indefinite hanging
+  timeout: 30000,        // 30-second safety timeout
 });
 
 // Automatically attach Bearer token from localStorage (works across all browsers, PWAs, & devices)

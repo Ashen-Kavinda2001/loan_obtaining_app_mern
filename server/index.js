@@ -39,7 +39,12 @@ const cookieParser  = require('cookie-parser');
 const corsOptions   = require('./config/corsOptions');
 
 app.disable('x-powered-by');
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginOpenerPolicy: false,
+  })
+);
 
 app.use(cors(corsOptions));
 

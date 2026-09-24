@@ -39,14 +39,17 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Immediately activate updated service worker on client tabs
+        skipWaiting: true,
+        clientsClaim: true,
         // Cache all static build assets
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
         // ── Runtime Caching Strategy ──────────────────────────────────────────
         runtimeCaching: [
           {
-            // CRITICAL: All API routes must NEVER be cached
-            // Financial data (loans, payments, members) must always be live
-            urlPattern: /^https?:\/\/fgiloans\.lk\/api\/.*/i,
+            // CRITICAL: All API routes must NEVER be cached or handled by SW
+            // Financial data (loans, payments, members) must always be live across all host variants
+            urlPattern: /\/api\/.*/i,
             handler: 'NetworkOnly',
             options: { cacheName: 'api-no-cache' },
           },
@@ -62,7 +65,7 @@ export default defineConfig({
         ],
         // SPA navigation fallback — ensures React Router routes load correctly on mobile
         navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/^\/api\//],
+        navigateFallbackDenylist: [/\/api\//],
       },
       devOptions: {
         enabled: false, // Disable SW in dev to avoid caching issues during development

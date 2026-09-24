@@ -70,13 +70,13 @@ export default function GrantLoan() {
       setForm(initialForm);
       setErrors({});
     } catch (err) {
-      setServerError(err.response?.data?.message || 'Failed to grant loan. Please try again.');
+      setServerError(err.response?.data?.message || err.message || 'Failed to grant loan. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const selectedMember = members.find(m => m._id === form.memberId);
+  const selectedMember = members.find(m => String(m.id || m._id) === String(form.memberId));
 
   return (
     <div className="page-content">
@@ -120,7 +120,7 @@ export default function GrantLoan() {
                 >
                   <option value="">Choose a member</option>
                   {members.map(m => (
-                    <option key={m._id} value={m._id}>{m.fullName} — {m.village}</option>
+                    <option key={m.id || m._id} value={m.id || m._id}>{m.fullName} — {m.village}</option>
                   ))}
                 </select>
               </Field>

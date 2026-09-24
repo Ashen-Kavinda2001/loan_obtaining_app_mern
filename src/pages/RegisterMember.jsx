@@ -51,11 +51,11 @@ export default function RegisterMember() {
     try {
       const { data } = await client.post('/groups', { name: newGroupName.trim() });
       setGroups(prev => [...prev, data]);
-      setForm(f => ({ ...f, groupId: data._id }));
+      setForm(f => ({ ...f, groupId: data.id || data._id }));
       setNewGroupName('');
       setShowNewGroup(false);
     } catch (err) {
-      setGroupError(err.response?.data?.message || 'Failed to create group');
+      setGroupError(err.response?.data?.message || err.message || 'Failed to create group');
     } finally {
       setCreatingGroup(false);
     }
@@ -93,7 +93,7 @@ export default function RegisterMember() {
       setForm(initialForm);
       setErrors({});
     } catch (err) {
-      setServerError(err.response?.data?.message || 'Failed to register member.');
+      setServerError(err.response?.data?.message || err.message || 'Failed to register member.');
     } finally {
       setLoading(false);
     }
@@ -188,7 +188,7 @@ export default function RegisterMember() {
                     >
                       <option value="">No Group (Ungrouped)</option>
                       {groups.map(g => (
-                        <option key={g._id} value={g._id}>{g.name}</option>
+                        <option key={g.id || g._id} value={g.id || g._id}>{g.name}</option>
                       ))}
                     </select>
                   </div>
