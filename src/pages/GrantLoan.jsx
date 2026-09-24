@@ -3,9 +3,10 @@ import { CreditCard, Calculator } from 'lucide-react';
 import client from '../api/client';
 import { formatCurrency } from '../data/demoData';
 
-const initialForm = {
-  memberId: '', loanAmount: '', interestRate: 30, loanDuration: '', startDate: ''
-};
+const getTodayDate = () => new Date().toISOString().slice(0, 10);
+const getInitialForm = () => ({
+  memberId: '', loanAmount: '', interestRate: 30, loanDuration: '', startDate: getTodayDate()
+});
 
 function Field({ label, error, children }) {
   return (
@@ -19,7 +20,7 @@ function Field({ label, error, children }) {
 
 export default function GrantLoan() {
   const [members, setMembers]   = useState([]);
-  const [form, setForm]         = useState(initialForm);
+  const [form, setForm]         = useState(getInitialForm);
   const [errors, setErrors]     = useState({});
   const [success, setSuccess]   = useState(false);
   const [loading, setLoading]   = useState(false);
@@ -54,6 +55,8 @@ export default function GrantLoan() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setServerError('');
+    setSuccess(false);
+
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
 
@@ -67,7 +70,7 @@ export default function GrantLoan() {
         startDate:    form.startDate,
       });
       setSuccess(true);
-      setForm(initialForm);
+      setForm(getInitialForm());
       setErrors({});
     } catch (err) {
       setServerError(err.response?.data?.message || err.message || 'Failed to grant loan. Please try again.');
@@ -94,7 +97,7 @@ export default function GrantLoan() {
             <div style={{ background: '#D1FAE5', border: '1px solid #6EE7B7', borderRadius: 'var(--radius-md)', padding: '14px 18px', marginBottom: 20, fontSize: 13, color: '#065F46', fontWeight: 600 }}>
               ✅ Loan granted successfully! Payment schedule has been created.
               <button style={{ marginLeft: 12, color: '#059669', fontSize: 12, cursor: 'pointer', background: 'none', border: 'none', textDecoration: 'underline' }}
-                onClick={() => setSuccess(false)}>Grant another</button>
+                onClick={() => { setSuccess(false); setServerError(''); setForm(getInitialForm()); setErrors({}); }}>Grant another</button>
             </div>
           )}
 
@@ -168,7 +171,7 @@ export default function GrantLoan() {
                 <button type="submit" className="btn btn-success" disabled={loading}>
                   {loading ? 'Granting…' : <><CreditCard size={15} /> Grant Loan</>}
                 </button>
-                <button type="button" className="btn btn-outline" onClick={() => { setForm(initialForm); setErrors({}); }}>Clear</button>
+                <button type="button" className="btn btn-outline" onClick={() => { setForm(getInitialForm()); setErrors({}); }}>Clear</button>
               </div>
             </form>
           </div>

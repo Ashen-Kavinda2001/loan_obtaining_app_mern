@@ -48,6 +48,34 @@ app.use(
 
 app.use(cors(corsOptions));
 
+// In-memory diagnostic ring buffer for live operational telemetry (last 50 requests)
+const recentApiLogs = [];
+const logApiEvent = (item) => {
+  recentApiLogs.push({ ...item, timestamp: new Date().toISOString() });
+  if (recentApiLogs.length > 50) recentApiLogs.shift();
+};
+
+app.use((req, res, next) => {
+  const start = Date.now();
+  const originalEnd = res.end;
+  res.end = function (...args) {
+    if (req.url && !req.url.includes('/debug-logs') && !req.url.includes('/health')) {
+      logApiEvent({
+        method: req.method,
+        url: req.originalUrl || req.url,
+        status: res.statusCode,
+        duration: `${Date.now() - start}ms`,
+        origin: req.headers.origin || null,
+        hasAuth: Boolean(req.headers.authorization),
+        hasCookie: Boolean(req.cookies?.token),
+        error: res.locals.lastError || null,
+      });
+    }
+    return originalEnd.apply(this, args);
+  };
+  next();
+});
+
 const { globalLimiter } = require('./middleware/rateLimiters');
 app.use(globalLimiter);
 
@@ -64,6 +92,7 @@ apiRouter.use('/groups',   require('./routes/groups'));
 apiRouter.use('/loans',    require('./routes/loans'));
 apiRouter.use('/payments', require('./routes/payments'));
 apiRouter.get('/health',   (req, res) => res.json({ status: 'ok' }));
+apiRouter.get('/debug-logs', (req, res) => res.json({ logs: recentApiLogs.slice().reverse() }));
 
 // Support both /api/... and /... (prevents 404s regardless of cPanel Passenger baseURI mapping)
 app.use('/api', apiRouter);
@@ -75,6 +104,7 @@ app.use((req, res) => res.status(404).json({ message: 'Route not found' }));
 // ── Global error handler ──────────────────────────────────
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
+  res.locals.lastError = err.message;
   console.error(err.stack || err.message);
   const isProduction = process.env.NODE_ENV === 'production';
   const statusCode = err.status || (err.message && err.message.startsWith('CORS blocked') ? 403 : 500);
