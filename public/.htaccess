@@ -2,13 +2,14 @@
   RewriteEngine On
   RewriteBase /
 
-  # Force HTTPS for all incoming web requests (defeats mixed content & cookie dropping)
-  RewriteCond %{HTTPS} off
-  RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
-
-  # Do not interfere with API requests
+  # 1. Do not interfere with API requests
   RewriteCond %{REQUEST_URI} ^/api [NC]
   RewriteRule ^ - [L]
+
+  # 2. Force HTTPS for frontend web requests
+  RewriteCond %{HTTPS} off
+  RewriteCond %{REQUEST_URI} !^/api [NC]
+  RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
   # Do not rewrite existing files or directories
   RewriteRule ^index\.html$ - [L]
