@@ -60,8 +60,8 @@ export default defineConfig({
             },
           },
         ],
-        // Offline fallback page when network is unavailable
-        navigateFallback: '/offline.html',
+        // SPA navigation fallback — ensures React Router routes load correctly on mobile
+        navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api\//],
       },
       devOptions: {
