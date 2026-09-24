@@ -2,6 +2,10 @@
   RewriteEngine On
   RewriteBase /
 
+  # Force HTTPS for all incoming web requests (defeats mixed content & cookie dropping)
+  RewriteCond %{HTTPS} off
+  RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
   # Do not interfere with API requests
   RewriteCond %{REQUEST_URI} ^/api [NC]
   RewriteRule ^ - [L]

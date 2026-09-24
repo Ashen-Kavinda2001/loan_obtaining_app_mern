@@ -46,7 +46,7 @@ export default defineConfig({
           {
             // CRITICAL: All API routes must NEVER be cached
             // Financial data (loans, payments, members) must always be live
-            urlPattern: /^https:\/\/fgiloans\.lk\/api\/.*/i,
+            urlPattern: /^https?:\/\/fgiloans\.lk\/api\/.*/i,
             handler: 'NetworkOnly',
             options: { cacheName: 'api-no-cache' },
           },
