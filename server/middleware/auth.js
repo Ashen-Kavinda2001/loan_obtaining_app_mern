@@ -2,36 +2,46 @@ const jwt  = require('jsonwebtoken');
 const User = require('../models/User');
 
 const protect = async (req, res, next) => {
-  let token = req.cookies?.token;
+  const candidates = [];
 
-  // Fallback to Bearer token header if cookie is not present (for API clients/mobile apps)
+  // 1. Bearer header (most authoritative — explicitly sent by frontend from localStorage)
   const authHeader = req.headers.authorization;
-  if (!token && authHeader && authHeader.startsWith('Bearer ')) {
-    token = authHeader.split(' ')[1];
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const bearer = authHeader.split(' ')[1];
+    if (bearer && bearer !== 'null' && bearer !== 'undefined') {
+      candidates.push(bearer);
+    }
   }
 
-  if (!token) {
+  // 2. HttpOnly cookie (fallback for browser clients)
+  if (req.cookies?.token) {
+    candidates.push(req.cookies.token);
+  }
+
+  if (candidates.length === 0) {
     return res.status(401).json({ message: 'Not authorized, no token provided' });
   }
 
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
-    const user = await User.findByPk(decoded.id);
+  for (const token of candidates) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+      const user = await User.findByPk(decoded.id);
 
-    if (!user) {
-      return res.status(401).json({ message: 'User account no longer exists' });
+      if (!user) continue;
+
+      // Verify token version (revokes token if password/credentials changed)
+      if (decoded.tokenVersion !== undefined && user.tokenVersion !== decoded.tokenVersion) {
+        continue;
+      }
+
+      req.user = user;
+      return next();
+    } catch {
+      // Try next candidate if verification fails
     }
-
-    // Verify token version (revokes token if password/credentials changed)
-    if (decoded.tokenVersion !== undefined && user.tokenVersion !== decoded.tokenVersion) {
-      return res.status(401).json({ message: 'Session expired or revoked. Please log in again.' });
-    }
-
-    req.user = user;
-    next();
-  } catch (err) {
-    return res.status(401).json({ message: 'Not authorized, token invalid or expired' });
   }
+
+  return res.status(401).json({ message: 'Not authorized, session invalid or expired' });
 };
 
 const authorize = (...roles) => {

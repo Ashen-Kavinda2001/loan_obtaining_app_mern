@@ -38,6 +38,8 @@ client.interceptors.response.use(
       localStorage.removeItem('fgi_user');
       if (window.location.pathname !== '/') {
         window.location.href = '/';
+      } else {
+        window.location.reload();
       }
     }
     return Promise.reject(error);
