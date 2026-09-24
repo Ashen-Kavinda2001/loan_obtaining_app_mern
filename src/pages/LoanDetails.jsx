@@ -145,9 +145,9 @@ export default function LoanDetails() {
   // ── Mark a payment as PAID ────────────────────────────────
   const markPaid = async (p, loanId) => {
     const raw    = amountInputs[p._id];
-    const amount = parseFloat(raw);
-    if (!raw || isNaN(amount) || amount <= 0) {
-      setErrMsg('Please enter the amount paid before marking as paid.');
+    const amount = (raw !== undefined && raw !== '') ? parseFloat(raw) : parseFloat(p.amountDue);
+    if (isNaN(amount) || amount <= 0) {
+      setErrMsg('Please enter a valid amount paid.');
       return;
     }
     try {
