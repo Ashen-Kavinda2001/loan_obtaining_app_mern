@@ -76,6 +76,16 @@ app.use((req, res, next) => {
   next();
 });
 
+// Prevent mobile carrier CGNAT and LiteSpeed idle socket dropouts:
+// After completing a mutation action (POST, PUT, PATCH, DELETE), signal the connection to close
+// so that the subsequent task always uses a guaranteed-live, fresh connection.
+app.use('/api', (req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
+    res.setHeader('Connection', 'close');
+  }
+  next();
+});
+
 const { globalLimiter } = require('./middleware/rateLimiters');
 app.use(globalLimiter);
 

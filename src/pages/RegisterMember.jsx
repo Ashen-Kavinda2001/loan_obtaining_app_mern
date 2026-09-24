@@ -65,8 +65,8 @@ export default function RegisterMember() {
     const e = {};
     if (!form.fullName.trim())        e.fullName      = 'Full name is required';
     if (!form.idNumber.trim())        e.idNumber      = 'NIC number is required';
-    else if (!/^\d{9}[Vv]$|^\d{12}$/.test(form.idNumber.trim()))
-                                      e.idNumber      = 'Enter a valid NIC (9 digits + V or 12 digits)';
+    else if (!/^\d{9}[VvXx]$|^\d{12}$/.test(form.idNumber.trim()))
+                                      e.idNumber      = 'Enter a valid NIC (9 digits + V/X or 12 digits)';
     if (!form.village.trim())         e.village       = 'Village is required';
     if (!form.contactNumber.trim())   e.contactNumber = 'Contact number is required';
     if (!form.age)                    e.age           = 'Age is required';
