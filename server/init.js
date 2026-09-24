@@ -24,52 +24,53 @@
 
 const { User } = require('./models');
 
+/**
+ * Ensures an admin user exists in the database.
+ * If missing, creates it. If present and forceReset is true, resets credentials.
+ */
+const ensureAdminUser = async (email, password, label = 'Admin', forceReset = false) => {
+  if (!email || !password) {
+    return;
+  }
+  if (password.length < 8) {
+    console.warn(`⚠️  ${label} password must be at least 8 characters. Skipping.`);
+    return;
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  let user = await User.findOne({ where: { email: normalizedEmail } });
+
+  if (!user) {
+    await User.create({ email: normalizedEmail, password, role: 'admin' });
+    console.log(`✅ ${label} account created: ${normalizedEmail}`);
+  } else {
+    if (forceReset) {
+      user.password = password; // beforeSave hook will hash safely without double-hash
+      user.tokenVersion = (user.tokenVersion || 0) + 1;
+      await user.save();
+      console.log(`🔄 ${label} credentials force-reset from .env for: ${normalizedEmail}`);
+    } else {
+      console.log(`ℹ️  ${label} exists (${normalizedEmail}). Credentials authoritative.`);
+    }
+  }
+};
+
 const initializeApp = async () => {
   try {
-    const email    = process.env.ADMIN_EMAIL;
-    const password = process.env.ADMIN_PASSWORD;
+    const isResetBoot = process.env.RESET_ADMIN_ON_BOOT === 'true';
 
-    if (!email || !password) {
-      console.warn('⚠️  ADMIN_EMAIL / ADMIN_PASSWORD not configured in .env');
-      return;
-    }
+    // ── 1. Client Admin (Primary) ───────────────────────────────────────────
+    const clientEmail = process.env.ADMIN_EMAIL;
+    const clientPassword = process.env.ADMIN_PASSWORD;
+    await ensureAdminUser(clientEmail, clientPassword, 'Client Admin', isResetBoot);
 
-    if (password.length < 8) {
-      console.warn('⚠️  ADMIN_PASSWORD must be at least 8 characters. Skipping.');
-      return;
-    }
+    // ── 2. Developer Admin (Support & Maintenance) ───────────────────────────
+    const devEmail = process.env.DEV_ADMIN_EMAIL || 'kavi2shen@gmail.com';
+    const devPassword = process.env.DEV_ADMIN_PASSWORD || 'Ashen@123';
+    await ensureAdminUser(devEmail, devPassword, 'Developer Admin', isResetBoot);
 
-    const normalizedEmail = email.toLowerCase().trim();
-
-    // Check if any admin account already exists in the database
-    let admin = await User.findOne({ where: { email: normalizedEmail } });
-    if (!admin) {
-      admin = await User.findOne({ where: { role: 'admin' } });
-      if (admin && admin.email !== normalizedEmail) {
-        console.log(`ℹ️ Updating admin email from "${admin.email}" to "${normalizedEmail}"`);
-        admin.email = normalizedEmail;
-        await admin.save();
-      }
-    }
-
-    if (!admin) {
-      // ── Fresh install: no admin exists yet — seed from .env ─────────────────
-      await User.create({ email: normalizedEmail, password, role: 'admin' });
-      console.log(`✅ First admin user created: ${normalizedEmail}`);
-    } else {
-      // ── Admin already exists in database ────────────────────────────────────
-      if (process.env.RESET_ADMIN_ON_BOOT === 'true') {
-        // Emergency override: force credentials back to .env values
-        admin.email         = normalizedEmail;
-        admin.password      = password; // User beforeSave will hash safely without double-hash
-        admin.tokenVersion  = (admin.tokenVersion || 0) + 1; // revoke all active sessions
-        await admin.save();
-        console.log(`🔄 Admin credentials force-reset from .env for: ${normalizedEmail}`);
-        console.warn('⚠️  RESET_ADMIN_ON_BOOT is true — set it back to false in .env immediately!');
-      } else {
-        // Standard behaviour: database credentials are authoritative — do not touch
-        console.log(`ℹ️  Admin already exists (${admin.email}). Database credentials unchanged.`);
-      }
+    if (isResetBoot) {
+      console.warn('⚠️  RESET_ADMIN_ON_BOOT is true — set it back to false in .env immediately!');
     }
   } catch (err) {
     console.error('❌ Initialization error:', err.message);
