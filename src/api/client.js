@@ -31,16 +31,28 @@ client.interceptors.response.use(
   async (error) => {
     const config = error.config;
 
-    // Auto-retry once if server returned 408 Request Timeout (handles LiteSpeed wake-up & stale sockets)
-    if (config && !config._retry && (error.response?.status === 408 || error.code === 'ECONNABORTED')) {
+    // Auto-retry once if request failed due to closed keep-alive socket (LiteSpeed timeout while user typed),
+    // network blip, 408 Request Timeout, or temporary gateway error
+    const isStaleSocketOrNetworkError =
+      !error.response ||
+      error.code === 'ERR_NETWORK' ||
+      error.message === 'Network Error' ||
+      error.code === 'ECONNABORTED' ||
+      error.code === 'ECONNRESET' ||
+      error.response?.status === 408 ||
+      error.response?.status === 502 ||
+      error.response?.status === 504;
+
+    const isLoginCall = error.config?.url?.includes('/auth/login');
+
+    if (config && !config._retry && isStaleSocketOrNetworkError && !isLoginCall) {
       config._retry = true;
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      await new Promise((resolve) => setTimeout(resolve, 400));
       return client(config);
     }
 
     const isAuthCheck = error.config?.url?.includes('/auth/me');
     const isCredentialUpdate = error.config?.url?.includes('/auth/update-credentials');
-    const isLoginCall = error.config?.url?.includes('/auth/login');
 
     if (error.response?.status === 401 && !isCredentialUpdate && !isAuthCheck && !isLoginCall) {
       localStorage.removeItem('fgi_token');

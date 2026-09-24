@@ -78,15 +78,21 @@ export default function RegisterMember() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setServerError('');
+    setSuccess(false);
+    setSubmitted(null);
+
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
 
     setLoading(true);
     try {
       const { data } = await client.post('/members', {
-        ...form,
-        age:     Number(form.age),
-        groupId: form.groupId || null,
+        fullName:      form.fullName.trim(),
+        idNumber:      form.idNumber.trim(),
+        village:       form.village.trim(),
+        contactNumber: form.contactNumber.trim(),
+        age:           Number(form.age),
+        groupId:       form.groupId || null,
       });
       setSubmitted(data);
       setSuccess(true);
@@ -102,6 +108,7 @@ export default function RegisterMember() {
   const set = (field) => (e) => {
     setForm(f => ({ ...f, [field]: e.target.value }));
     setErrors(err => ({ ...err, [field]: '' }));
+    if (serverError) setServerError('');
   };
 
   return (
@@ -125,12 +132,20 @@ export default function RegisterMember() {
               <div style={{ fontWeight: 700, color: '#065F46', marginBottom: 2 }}>Member Registered Successfully!</div>
               <div style={{ fontSize: 13, color: '#065F46' }}>
                 <strong>{submitted.fullName}</strong> from {submitted.village} has been added
-                {submitted.groupId ? <> to group <strong>{submitted.groupId.name}</strong></> : ' as Ungrouped'}.
+                {(submitted.groupDetails?.name || submitted.groupId?.name)
+                  ? <> to group <strong>{submitted.groupDetails?.name || submitted.groupId?.name}</strong></>
+                  : ' as Ungrouped'}.
               </div>
               <button
                 className="btn btn-sm"
                 style={{ marginTop: 8, color: '#059669', background: 'transparent', padding: 0, fontSize: 13 }}
-                onClick={() => setSuccess(false)}
+                onClick={() => {
+                  setSuccess(false);
+                  setSubmitted(null);
+                  setServerError('');
+                  setForm(initialForm);
+                  setErrors({});
+                }}
               >
                 + Register another member
               </button>

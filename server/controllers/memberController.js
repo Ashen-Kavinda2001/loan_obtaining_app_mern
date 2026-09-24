@@ -35,18 +35,23 @@ const createMember = async (req, res, next) => {
   try {
     const { fullName, idNumber, village, contactNumber, age, groupId } = req.body;
 
-    const existing = await Member.findOne({ where: { idNumber } });
+    const cleanNIC = idNumber ? String(idNumber).trim() : '';
+    if (!cleanNIC) {
+      return res.status(400).json({ message: 'NIC number is required' });
+    }
+
+    const existing = await Member.findOne({ where: { idNumber: cleanNIC } });
     if (existing)
       return res.status(400).json({ message: 'A member with this NIC already exists' });
 
     const member = await Member.create({
-      fullName,
-      idNumber,
-      village,
-      contactNumber,
-      age: age ? parseInt(age, 10) : null,
-      groupId: groupId ? parseInt(groupId, 10) : null,
-      createdBy: req.user.id || req.user._id,
+      fullName:      fullName ? String(fullName).trim() : '',
+      idNumber:      cleanNIC,
+      village:       village ? String(village).trim() : '',
+      contactNumber: contactNumber ? String(contactNumber).trim() : '',
+      age:           age ? parseInt(age, 10) : null,
+      groupId:       groupId ? parseInt(groupId, 10) : null,
+      createdBy:     req.user.id || req.user._id,
     });
 
     const populated = await Member.findByPk(member.id, {

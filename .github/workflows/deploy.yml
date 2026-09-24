@@ -43,6 +43,12 @@ jobs:
           server-dir: /public_html/
           dangerous-clean-slate: false
 
+      # ── Prepare Passenger Restart ──────────────────────────────────────────────
+      - name: 🔄 Touch restart.txt for automatic Passenger reload
+        run: |
+          mkdir -p ./server/tmp
+          date +%s > ./server/tmp/restart.txt
+
       # ── Deploy Backend ─────────────────────────────────────────────────────────
       - name: 🚀 Deploy Backend to cPanel backend folder
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
@@ -58,7 +64,3 @@ jobs:
             **/.git*/**
             **/node_modules/**
             **/.env*
-            **/tmp/**
-      # NOTE: After pipeline runs, go to cPanel → Setup Node.js App → Restart
-      # to apply any new backend changes. Run npm install manually from cPanel
-      # Terminal only when adding new npm packages.
