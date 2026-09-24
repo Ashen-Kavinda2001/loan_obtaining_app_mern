@@ -1,29 +1,34 @@
 const { Sequelize } = require('sequelize');
 
-const rawUri = process.env.MYSQL_URI || 'mysql://root:password@localhost:3306/loan_app';
-// Strip ?ssl-mode=REQUIRED as mysql2 uses dialectOptions.ssl directly
-const connectionUri = rawUri.replace(/\?.*$/i, '');
+const rawUri = process.env.MYSQL_URI || 'mysql://root:password@127.0.0.1:3306/loan_app';
+// Strip ?ssl-mode=REQUIRED and enforce direct IPv4 127.0.0.1 for localhost (eliminates Node 18 IPv6 delay)
+const connectionUri = rawUri
+  .replace(/\?.*$/i, '')
+  .replace(/@localhost(:|\/)/i, '@127.0.0.1$1');
 
-// Detect local database connections (cPanel localhost MySQL does not use SSL)
+// Detect local database connections (cPanel local MySQL does not use SSL)
 const isLocalDB = connectionUri.includes('localhost') || connectionUri.includes('127.0.0.1');
 
 const sequelize = new Sequelize(connectionUri, {
   dialect: 'mysql',
   logging: process.env.NODE_ENV === 'development' ? console.log : false,
   dialectOptions: isLocalDB
-    ? {} // No SSL needed for cPanel local MySQL
+    ? {
+        connectTimeout: 10000,
+      }
     : {
         ssl: {
           require: true,
           rejectUnauthorized: false, // Accepts Aiven Cloud SSL certificate
         },
+        connectTimeout: 10000,
       },
   pool: {
     max: 5,   // Conservative limit for shared hosting (cPanel MySQL connection limits)
     min: 0,   // Do not hold idle connections open — prevents stale socket dropouts after hours of inactivity
     acquire: 30000,
-    idle: 10000,
-    evict: 10000, // Periodically cleans up dead connections
+    idle: 30000,
+    evict: 15000, // Periodically cleans up dead connections
   },
   retry: {
     max: 3,   // Automatically retry transient connection dropouts

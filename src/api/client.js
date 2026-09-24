@@ -3,6 +3,7 @@ import axios from 'axios';
 const client = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api',
   withCredentials: true, // Enables browser to automatically transmit HttpOnly session cookies
+  timeout: 20000,        // 20-second safety timeout to avoid indefinite hanging
 });
 
 // Automatically attach Bearer token from localStorage (works across all browsers, PWAs, & devices)

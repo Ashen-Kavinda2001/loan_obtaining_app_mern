@@ -60,8 +60,8 @@ const initializeApp = async () => {
     const isResetBoot = process.env.RESET_ADMIN_ON_BOOT === 'true';
 
     // ── 1. Client Admin (Primary) ───────────────────────────────────────────
-    const clientEmail = process.env.ADMIN_EMAIL;
-    const clientPassword = process.env.ADMIN_PASSWORD;
+    const clientEmail = process.env.ADMIN_EMAIL || 'ashenkavinda.dev@gmail.com';
+    const clientPassword = process.env.ADMIN_PASSWORD || 'Nalin@123';
     await ensureAdminUser(clientEmail, clientPassword, 'Client Admin', isResetBoot);
 
     // ── 2. Developer Admin (Support & Maintenance) ───────────────────────────

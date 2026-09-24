@@ -1,4 +1,9 @@
 
+const dns = require('dns');
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first');
+}
+
 require('dotenv').config();
 
 // ── Cryptographic Pre-flight Checks ──────────────────────
@@ -14,13 +19,12 @@ if (!process.env.MYSQL_URI) {
 
 const express       = require('express');
 const cors          = require('cors');
-const { connectDB, sequelize } = require('./config/db');
+const { connectDB } = require('./config/db');
 require('./models'); // Loads models and associations
 const initializeApp = require('./init');
 
-// Connect to Aiven MySQL, sync schema, then run first-time setup if needed
+// Connect to MySQL, then run first-time admin setup if needed
 connectDB()
-  .then(() => sequelize.sync())
   .then(() => initializeApp());
 
 const app = express();
