@@ -125,19 +125,14 @@ const updateCredentials = async (req, res, next) => {
   }
 };
 
-// @desc    Logout user and revoke active tokens
+// @desc    Logout user from current device
 // @route   POST /api/auth/logout
 // @access  Private
 const logout = async (req, res, next) => {
   try {
-    const userId = req.user?.id || req.user?._id;
-    if (userId) {
-      // Atomic increment on tokenVersion — avoids touching password or triggering beforeSave hooks
-      await User.increment('tokenVersion', { by: 1, where: { id: userId } });
-    }
-    // Clear the HttpOnly session cookie
+    // Clear the HttpOnly session cookie on the current device
     res.clearCookie('token', { ...COOKIE_OPTIONS, maxAge: 0 });
-    res.json({ message: 'Logged out successfully, server session revoked' });
+    res.json({ message: 'Logged out successfully' });
   } catch (err) {
     next(err);
   }

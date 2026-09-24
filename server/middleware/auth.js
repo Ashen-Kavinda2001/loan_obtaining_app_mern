@@ -29,11 +29,6 @@ const protect = async (req, res, next) => {
 
       if (!user) continue;
 
-      // Verify token version (revokes token if password/credentials changed)
-      if (decoded.tokenVersion !== undefined && user.tokenVersion !== decoded.tokenVersion) {
-        continue;
-      }
-
       req.user = user;
       return next();
     } catch {
