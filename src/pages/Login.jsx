@@ -38,6 +38,8 @@ function ForgotPassword({ onBack }) {
         setError(serverMsg);
       } else if (status === 502 || status === 503) {
         setError(`Backend server is not running (${status} Bad Gateway). Please check the Node.js app in cPanel.`);
+      } else if (status === 408) {
+        setError('Server is waking up from sleep (408 Timeout). Please try clicking Send Reset Code again.');
       } else if (status) {
         setError(`Server error ${status}. Please check backend logs.`);
       } else if (err.code === 'ERR_NETWORK' || !err.response) {
@@ -288,6 +290,8 @@ export default function Login({ onLogin }) {
         setError(serverMsg);
       } else if (status === 502 || status === 503) {
         setError(`Backend server is not running (${status} Bad Gateway). Please check Node.js app in cPanel.`);
+      } else if (status === 408) {
+        setError('Server is waking up from sleep (408 Timeout). Please try clicking Sign In again.');
       } else if (status === 401) {
         setError('Invalid email or password. Please check your credentials.');
       } else if (status) {

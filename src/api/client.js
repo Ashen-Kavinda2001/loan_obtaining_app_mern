@@ -14,11 +14,20 @@ client.interceptors.request.use((config) => {
   return config;
 });
 
-// Auto-redirect if 401 is received on protected operational calls
-// (do not redirect on initial /auth/me check or /auth/update-credentials validation errors)
+// Auto-redirect if 401 is received on protected operational calls,
+// and auto-retry once on HTTP 408 / cold-start timeouts
 client.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const config = error.config;
+
+    // Auto-retry once if server returned 408 Request Timeout (handles LiteSpeed wake-up & stale sockets)
+    if (config && !config._retry && (error.response?.status === 408 || error.code === 'ECONNABORTED')) {
+      config._retry = true;
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      return client(config);
+    }
+
     const isAuthCheck = error.config?.url?.includes('/auth/me');
     const isCredentialUpdate = error.config?.url?.includes('/auth/update-credentials');
     const isLoginCall = error.config?.url?.includes('/auth/login');

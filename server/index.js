@@ -76,4 +76,8 @@ app.use((err, req, res, next) => {
 
 // ── Start ─────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+const server = app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+
+// KeepAlive timeouts aligned with LiteSpeed / Passenger reverse proxy (prevents 408 race conditions)
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 66000;
