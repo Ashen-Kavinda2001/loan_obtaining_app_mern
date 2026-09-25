@@ -45,14 +45,9 @@ export default defineConfig({
         // Cache all static build assets
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
         // ── Runtime Caching Strategy ──────────────────────────────────────────
+        // Note: /api/ is intentionally excluded from runtimeCaching so the Service Worker
+        // NEVER intercepts API requests. All API calls go directly through native HTTPS.
         runtimeCaching: [
-          {
-            // CRITICAL: All API routes must NEVER be cached or handled by SW
-            // Financial data (loans, payments, members) must always be live across all host variants
-            urlPattern: /\/api\/.*/i,
-            handler: 'NetworkOnly',
-            options: { cacheName: 'api-no-cache' },
-          },
           {
             // Google Fonts — cache for performance
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,

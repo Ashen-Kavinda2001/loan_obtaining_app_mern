@@ -47,6 +47,14 @@ client.interceptors.response.use(
 
     if (config && !config._retry && isStaleSocketOrNetworkError && !isLoginCall) {
       config._retry = true;
+      // Prevent double serialization if Axios already stringified the body on the initial attempt
+      if (typeof config.data === 'string') {
+        try {
+          config.data = JSON.parse(config.data);
+        } catch {
+          // keep as is
+        }
+      }
       await new Promise((resolve) => setTimeout(resolve, 400));
       return client(config);
     }
