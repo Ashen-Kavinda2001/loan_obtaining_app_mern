@@ -74,6 +74,7 @@ const sendSMS = async (recipientPhone, messageText) => {
       port:     443,
       path:     '/api/http/sms/send',
       method:   'POST',
+      timeout:  3500, // 3.5s safety timeout prevents hanging
       headers: {
         'Accept':         'application/json',
         'Content-Type':   'application/json',
@@ -94,6 +95,12 @@ const sendSMS = async (recipientPhone, messageText) => {
         console.log(`📱 SMS sent to ${formattedRecipient} via text.lk:`, data);
         resolve({ success: true, data });
       });
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      console.warn('⚠️  text.lk request timed out after 3.5s.');
+      resolve({ success: false, error: 'SMS gateway timeout' });
     });
 
     req.on('error', (err) => {

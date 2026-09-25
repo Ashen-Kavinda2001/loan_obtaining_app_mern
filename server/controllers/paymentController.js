@@ -128,27 +128,32 @@ const markPaid = async (req, res, next) => {
       resultPayment = payment;
     });
 
-    // Fire-and-forget SMS notification outside the transaction
-    if (resultPayment) {
-      const fullLoan = await Loan.findByPk(resultPayment.loanId, {
-        include: [{ model: Member, as: 'member' }],
-      });
-      if (fullLoan && fullLoan.member && fullLoan.member.contactNumber) {
-        sendPaymentConfirmationSMS({
-          memberName:       fullLoan.member.fullName || 'Customer',
-          contactNumber:    fullLoan.member.contactNumber,
-          amountPaid,
-          monthNumber:      resultPayment.monthNumber,
-          remainingBalance: fullLoan.remainingBalance,
-        }).catch((smsErr) => {
-          console.error('⚠️  Failed to dispatch payment confirmation SMS:', smsErr.message);
-        });
-      }
-    }
-
     invalidateStatsCache();
 
+    // Respond to user immediately without blocking on external SMS gateways
     res.json(resultPayment);
+
+    // Fire-and-forget SMS notification in the background
+    if (resultPayment) {
+      setImmediate(async () => {
+        try {
+          const fullLoan = await Loan.findByPk(resultPayment.loanId, {
+            include: [{ model: Member, as: 'member' }],
+          });
+          if (fullLoan && fullLoan.member && fullLoan.member.contactNumber) {
+            await sendPaymentConfirmationSMS({
+              memberName:       fullLoan.member.fullName || 'Customer',
+              contactNumber:    fullLoan.member.contactNumber,
+              amountPaid,
+              monthNumber:      resultPayment.monthNumber,
+              remainingBalance: fullLoan.remainingBalance,
+            });
+          }
+        } catch (smsErr) {
+          console.error('⚠️  Failed to dispatch payment confirmation SMS:', smsErr.message);
+        }
+      });
+    }
   } catch (err) {
     next(err);
   }
