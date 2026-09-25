@@ -23,15 +23,15 @@ const sequelize = new Sequelize(connectionUri, {
           require: true,
           rejectUnauthorized: false, // Accepts Aiven Cloud SSL certificate
         },
-        connectTimeout: 10000,
+        connectTimeout: 20000,
         enableKeepAlive: true,
         keepAliveInitialDelay: 5000,
       },
   pool: {
     max: 15,
-    min: 0,       // CRITICAL: NEVER hold idle connections. Localhost MySQL establishes in 2ms.
-    acquire: 15000,
-    idle: 5000,   // Release idle connections after 5s so they never turn into stale zombies
+    min: 0,       // Never hold idle connections open
+    acquire: 30000,
+    idle: 10000,  // Release idle connections after 10s
     evict: 2000,  // Clean up reaped connections every 2s
   },
   retry: {
