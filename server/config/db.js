@@ -15,6 +15,8 @@ const sequelize = new Sequelize(connectionUri, {
   dialectOptions: isLocalDB
     ? {
         connectTimeout: 10000,
+        enableKeepAlive: true,
+        keepAliveInitialDelay: 5000,
       }
     : {
         ssl: {
@@ -22,16 +24,18 @@ const sequelize = new Sequelize(connectionUri, {
           rejectUnauthorized: false, // Accepts Aiven Cloud SSL certificate
         },
         connectTimeout: 10000,
+        enableKeepAlive: true,
+        keepAliveInitialDelay: 5000,
       },
   pool: {
-    max: 20,      // Scale connection capacity for simultaneous queries & multiple devices
-    min: 2,       // Keep 2 warm connections ready so subsequent queries execute instantly
-    acquire: 30000,
-    idle: 120000, // 2 minutes before reaping idle connections
-    evict: 60000, // Check for dead connections every 60s
+    max: 15,
+    min: 0,       // CRITICAL: NEVER hold idle connections. Localhost MySQL establishes in 2ms.
+    acquire: 15000,
+    idle: 5000,   // Release idle connections after 5s so they never turn into stale zombies
+    evict: 2000,  // Clean up reaped connections every 2s
   },
   retry: {
-    max: 3,   // Automatically retry transient connection dropouts
+    max: 3,       // Automatically retry queries if a transient socket drop occurs
   },
 });
 
