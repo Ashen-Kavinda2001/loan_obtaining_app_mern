@@ -31,8 +31,8 @@ client.interceptors.response.use(
   async (error) => {
     const config = error.config;
 
-    // Auto-retry up to 2 times with progressive delay if request failed due to server cold start,
-    // closed keep-alive socket (LiteSpeed timeout), 408 Request Timeout, or temporary 502/504 gateway error
+    // Auto-retry once if request failed due to closed keep-alive socket (LiteSpeed timeout while user typed),
+    // network blip, 408 Request Timeout, or temporary gateway error
     const isStaleSocketOrNetworkError =
       !error.response ||
       error.code === 'ERR_NETWORK' ||
@@ -45,14 +45,9 @@ client.interceptors.response.use(
 
     const isLoginCall = error.config?.url?.includes('/auth/login');
 
-    config._retryCount = config._retryCount || 0;
-    const MAX_RETRIES = 2;
-
-    if (config && config._retryCount < MAX_RETRIES && isStaleSocketOrNetworkError && !isLoginCall) {
-      config._retryCount += 1;
-      // Progressive wait (1s, then 2.5s) to allow cPanel Passenger & MySQL enough time to boot
-      const delay = config._retryCount === 1 ? 1000 : 2500;
-      await new Promise((resolve) => setTimeout(resolve, delay));
+    if (config && !config._retry && isStaleSocketOrNetworkError && !isLoginCall) {
+      config._retry = true;
+      await new Promise((resolve) => setTimeout(resolve, 400));
       return client(config);
     }
 

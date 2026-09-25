@@ -2,9 +2,6 @@
   RewriteEngine On
   RewriteBase /
 
-  # Prevent LiteSpeed web server from dropping connections or triggering 408 timeouts during Node wakeups
-  RewriteRule .* - [E=noconntimeout:1,E=noabort:1]
-
   # 1. Do not interfere with API requests
   RewriteCond %{REQUEST_URI} ^/api [NC]
   RewriteRule ^ - [L]
