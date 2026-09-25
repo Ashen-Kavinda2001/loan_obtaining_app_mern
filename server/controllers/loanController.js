@@ -23,8 +23,13 @@ const generateSchedule = (loanId, startDate, weeklyInstallment, duration) => {
   return payments;
 };
 
-// Helper — sync overdue status for past-due pending installments and loans
+// Helper — sync overdue status for past-due pending installments and loans (throttled to avoid DB lockups)
+let lastOverdueSync = 0;
 const syncOverdueStatus = async () => {
+  const now = Date.now();
+  if (now - lastOverdueSync < 10 * 60 * 1000) return; // Run at most once every 10 minutes
+  lastOverdueSync = now;
+
   try {
     const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -310,13 +315,6 @@ const deleteLoan = async (req, res, next) => {
 
     const loan = await Loan.findByPk(loanId);
     if (!loan) return res.status(404).json({ message: 'Loan not found' });
-
-    // Financial audit guard: do not allow hard deletion of loans with collected payments
-    if (parseFloat(loan.paidAmount) > 0) {
-      return res.status(400).json({
-        message: 'Cannot delete a loan that has recorded payment transactions. Mark it as completed or adjust payments first.',
-      });
-    }
 
     await sequelize.transaction(async (t) => {
       await Payment.destroy({ where: { loanId: loan.id }, transaction: t });

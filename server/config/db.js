@@ -25,10 +25,10 @@ const sequelize = new Sequelize(connectionUri, {
       },
   pool: {
     max: 20,      // Scale connection capacity for simultaneous queries & multiple devices
-    min: 0,       // Do not hold idle connections open — prevents stale socket dropouts
-    acquire: 60000,
-    idle: 60000,
-    evict: 15000, // Periodically cleans up dead connections
+    min: 2,       // Keep 2 warm connections ready so subsequent queries execute instantly
+    acquire: 30000,
+    idle: 120000, // 2 minutes before reaping idle connections
+    evict: 60000, // Check for dead connections every 60s
   },
   retry: {
     max: 3,   // Automatically retry transient connection dropouts

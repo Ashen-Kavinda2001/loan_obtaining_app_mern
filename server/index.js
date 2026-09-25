@@ -76,13 +76,14 @@ app.use((req, res, next) => {
   next();
 });
 
-// Prevent mobile carrier CGNAT and LiteSpeed idle socket dropouts:
-// After completing a mutation action (POST, PUT, PATCH, DELETE), signal the connection to close
-// so that the subsequent task always uses a guaranteed-live, fresh connection.
+// Disable etag generation on dynamic APIs to prevent 304 empty body responses on mobile PWAs
+app.set('etag', false);
+
+// Keep connections alive and ensure real-time financial responses are never cached
 app.use('/api', (req, res, next) => {
-  if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
-    res.setHeader('Connection', 'close');
-  }
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   next();
 });
 
