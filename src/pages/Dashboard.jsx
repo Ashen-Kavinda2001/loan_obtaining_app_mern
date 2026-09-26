@@ -20,10 +20,11 @@ export default function Dashboard() {
           client.get('/loans/stats'),
           client.get('/loans'),
         ]);
-        setStats(statsRes.data);
-        setLoans(loansRes.data);
+        setStats(statsRes?.data || null);
+        setLoans(Array.isArray(loansRes?.data) ? loansRes.data : []);
       } catch (err) {
         console.error('Dashboard fetch error', err);
+        setLoans([]);
       } finally {
         setLoading(false);
       }
@@ -47,7 +48,8 @@ export default function Dashboard() {
     </div>
   );
 
-  const activeLoans = loans.filter(l => l.status !== 'completed');
+  const loansList = Array.isArray(loans) ? loans : [];
+  const activeLoans = loansList.filter(l => l.status !== 'completed');
 
   return (
     <div className="page-content">
@@ -97,7 +99,7 @@ export default function Dashboard() {
               {formatCurrency(
                 stats?.totalReceivedAmount ??
                 stats?.totalAmountReceived ??
-                loans.reduce((sum, l) => sum + parseFloat(l.paidAmount || 0), 0)
+                loansList.reduce((sum, l) => sum + parseFloat(l.paidAmount || 0), 0)
               )}
             </div>
             <div className="stat-sub">Total payments collected</div>

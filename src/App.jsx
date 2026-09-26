@@ -88,6 +88,28 @@ export default function App() {
       .finally(() => setCheckingAuth(false));
   }, []);
 
+  // ── Mobile/Tablet socket reconnect on tab resume ──────────────
+  // When a tablet comes back from sleep/another app, the previous TCP socket
+  // may be dead (LiteSpeed or mobile radio killed it). Hit /ping immediately
+  // so the browser opens a fresh connection before the user clicks anything.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && localStorage.getItem('fgi_token')) {
+        client.get('/ping').catch((err) => {
+          // If session expired while app was in background, force re-login
+          if (err.response?.status === 401) {
+            localStorage.removeItem('fgi_token');
+            localStorage.removeItem('fgi_user');
+            setIsLoggedIn(false);
+            setUser(null);
+          }
+        });
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
   const handleLogin = (userData) => {
     setIsLoggedIn(true);
     if (userData) {

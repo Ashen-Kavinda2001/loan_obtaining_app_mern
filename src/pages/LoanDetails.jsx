@@ -107,7 +107,7 @@ export default function LoanDetails() {
   // ── Fetch all loans ──────────────────────────────────────
   useEffect(() => {
     client.get('/loans')
-      .then(({ data }) => setLoans(data))
+      .then(({ data }) => setLoans(Array.isArray(data) ? data : []))
       .catch(() => console.error('Failed to load loans'))
       .finally(() => setLoading(false));
   }, []);

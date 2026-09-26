@@ -102,7 +102,10 @@ apiRouter.use('/members',  require('./routes/members'));
 apiRouter.use('/groups',   require('./routes/groups'));
 apiRouter.use('/loans',    require('./routes/loans'));
 apiRouter.use('/payments', require('./routes/payments'));
-apiRouter.get('/health',   (req, res) => res.json({ status: 'ok' }));
+// DB-free health check — answers instantly even when DB pool is saturated
+apiRouter.get('/health', (req, res) => res.json({ status: 'ok' }));
+// Ping — even lighter than health, used for A/B diagnosis: does it respond while a DB route stalls?
+apiRouter.get('/ping',   (req, res) => res.json({ pong: true, ts: Date.now() }));
 apiRouter.get('/debug-logs', (req, res) => res.json({ logs: recentApiLogs.slice().reverse() }));
 
 // Support both /api/... and /... (prevents 404s regardless of cPanel Passenger baseURI mapping)
@@ -113,14 +116,33 @@ app.use('/', apiRouter);
 app.use((req, res) => res.status(404).json({ message: 'Route not found' }));
 
 // ── Global error handler ──────────────────────────────────
-// eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   res.locals.lastError = err.message;
-  console.error(err.stack || err.message);
+  // Timestamp + method + path in every error log for easy correlation with LiteSpeed access logs
+  console.error(`[${new Date().toISOString()}] ${req.method} ${req.path} — ${err.name}: ${err.message}`);
+  if (res.headersSent) return next(err);
+
   const isProduction = process.env.NODE_ENV === 'production';
-  const statusCode = err.status || (err.message && err.message.startsWith('CORS blocked') ? 403 : 500);
+
+  // Map Sequelize connection errors to 503 so client gets a fast error instead of a 30s timeout
+  let statusCode = err.status || 500;
+  if (err.name === 'SequelizeConnectionAcquireTimeoutError' ||
+      err.name === 'SequelizeConnectionError' ||
+      err.name === 'SequelizeConnectionRefusedError' ||
+      err.name === 'SequelizeConnectionTimedOutError') {
+    statusCode = 503;
+  } else if (err.name === 'SequelizeValidationError' ||
+             err.name === 'SequelizeUniqueConstraintError') {
+    statusCode = 422;
+  } else if (err.message && err.message.startsWith('CORS blocked')) {
+    statusCode = 403;
+  }
+
   res.status(statusCode).json({
-    message: isProduction && statusCode === 500 ? 'An unexpected server error occurred' : (err.message || 'Server error'),
+    error: err.name || 'ServerError',
+    message: isProduction && statusCode === 500
+      ? 'An unexpected server error occurred'
+      : (err.message || 'Server error'),
   });
 });
 

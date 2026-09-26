@@ -12,7 +12,10 @@ const getBaseURL = () => {
 const client = axios.create({
   baseURL: getBaseURL(),
   withCredentials: true, // Enables browser to automatically transmit HttpOnly session cookies
-  timeout: 30000,        // 30-second safety timeout
+  // 45s — intentionally LONGER than Sequelize's 15s acquire timeout.
+  // If a request fails at ~15s with a JSON 503 error → DB pool problem.
+  // If a request hangs the full 45s with no response → proxy/Passenger problem.
+  timeout: 45000,
 });
 
 // Automatically attach Bearer token from localStorage (works across all browsers, PWAs, & devices)
@@ -45,7 +48,12 @@ client.interceptors.response.use(
 
     const isLoginCall = error.config?.url?.includes('/auth/login');
 
-    if (config && !config._retry && isStaleSocketOrNetworkError && !isLoginCall) {
+    // Only auto-retry on safe/idempotent methods (GET, HEAD, OPTIONS).
+    // NEVER blind-retry POST/PUT/DELETE — the first attempt may have succeeded and
+    // only the response was lost, causing double-writes (double loan grants, double payments).
+    const isSafeMethod = config.method && ['get', 'head', 'options'].includes(config.method.toLowerCase());
+
+    if (config && !config._retry && isStaleSocketOrNetworkError && !isLoginCall && isSafeMethod) {
       config._retry = true;
       // Prevent double serialization if Axios already stringified the body on the initial attempt
       if (typeof config.data === 'string') {

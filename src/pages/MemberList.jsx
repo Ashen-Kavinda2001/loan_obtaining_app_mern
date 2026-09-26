@@ -65,7 +65,7 @@ export default function MemberList() {
       if (context && context !== 'ungrouped') url += `?groupId=${context.id || context._id}`;
       else if (context === 'ungrouped')        url += '?ungrouped=true';
       const { data } = await client.get(url);
-      setMembers(data);
+      setMembers(Array.isArray(data) ? data : []);
     } catch { setMembers([]); }
     finally { setLoading(false); }
   }, []);
@@ -145,12 +145,12 @@ export default function MemberList() {
   };
 
   // ── Derived lists ────────────────────────────────────────────
-  const filteredGroups = groups.filter(g =>
-    g.name.toLowerCase().includes(query.toLowerCase())
+  const filteredGroups = (Array.isArray(groups) ? groups : []).filter(g =>
+    g.name?.toLowerCase().includes(query.toLowerCase())
   );
-  const filteredMembers = members.filter(m =>
-    m.fullName.toLowerCase().includes(query.toLowerCase()) ||
-    m.idNumber.includes(query)
+  const filteredMembers = (Array.isArray(members) ? members : []).filter(m =>
+    m.fullName?.toLowerCase().includes(query.toLowerCase()) ||
+    m.idNumber?.includes(query)
   );
 
   // ─────────────────────────────────────────────────────────────
