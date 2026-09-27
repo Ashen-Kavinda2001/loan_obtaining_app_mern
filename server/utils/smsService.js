@@ -74,7 +74,7 @@ const sendSMS = async (recipientPhone, messageText) => {
       port:     443,
       path:     '/api/http/sms/send',
       method:   'POST',
-      timeout:  3500, // 3.5s safety timeout prevents hanging
+      timeout:  30000, // 30s timeout allows text.lk Cloudflare + telco delivery to complete
       headers: {
         'Accept':         'application/json',
         'Content-Type':   'application/json',
@@ -99,7 +99,7 @@ const sendSMS = async (recipientPhone, messageText) => {
 
     req.on('timeout', () => {
       req.destroy();
-      console.warn('⚠️  text.lk request timed out after 3.5s.');
+      console.warn('⚠️  text.lk request timed out after 30s.');
       resolve({ success: false, error: 'SMS gateway timeout' });
     });
 
