@@ -28,11 +28,11 @@ const sequelize = new Sequelize(connectionUri, {
         keepAliveInitialDelay: 5000,
       },
   pool: {
-    max: 15,
-    min: 0,       // CRITICAL: NEVER hold idle connections. Localhost MySQL establishes in 2ms.
+    max: 5,         // Safe pool size for 1GB RAM cPanel shared hosting (prevents memory spikes & max_user_connections exhaustion)
+    min: 2,         // Keep 2 warm connections always ready — eliminates cold connect latency between human clicks!
     acquire: 15000,
-    idle: 5000,   // Release idle connections after 5s so they never turn into stale zombies
-    evict: 2000,  // Clean up reaped connections every 2s
+    idle: 30000,    // Keep warm connection for 30s instead of killing at 5s while user types or reads the screen
+    evict: 5000,    // Clean up reaped connections every 5s
   },
   retry: {
     max: 3,       // Retry transient socket drops — but ONLY on real connection errors (not query logic errors)

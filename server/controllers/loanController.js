@@ -90,7 +90,8 @@ const syncOverdueStatus = async () => {
 // @access  Private
 const getLoans = async (req, res, next) => {
   try {
-    await syncOverdueStatus();
+    // Fire overdue sync in background non-blocking so API response returns instantly in <10ms
+    syncOverdueStatus().catch((err) => console.error('Background syncOverdueStatus error:', err.message));
     const loans = await Loan.findAll({
       include: [
         {
@@ -146,7 +147,8 @@ const getStats = async (req, res, next) => {
       return res.json(statsCache);
     }
 
-    await syncOverdueStatus();
+    // Fire overdue sync in background non-blocking so stats returns instantly
+    syncOverdueStatus().catch((err) => console.error('Background syncOverdueStatus error:', err.message));
 
     const [totalMembers, loans] = await Promise.all([
       Member.count(),
