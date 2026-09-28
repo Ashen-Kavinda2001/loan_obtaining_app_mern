@@ -200,6 +200,11 @@ app.use((err, req, res, next) => {
 
 // ── Start ─────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
-// Node's default keep-alive (5s) is used deliberately: a 65s override (an AWS ALB recommendation)
-// coincided with requests being held in front of Node on LiteSpeed.
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+const server = app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+
+// keepAliveTimeout must exceed the LiteSpeed/Passenger reverse proxy's upstream idle
+// timeout, or Node can close a pooled keep-alive socket while LiteSpeed still considers
+// it reusable -- the next request on that socket then gets a connection reset with no
+// HTTP response (client sees a network error, not a 502/503).
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 66000;
