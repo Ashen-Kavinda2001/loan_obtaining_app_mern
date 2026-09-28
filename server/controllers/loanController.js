@@ -271,6 +271,7 @@ const createLoan = async (req, res, next) => {
     const totalRepayable     = Math.round(amount * (1 + rate / 100));
     const monthlyInstallment = Math.round(totalRepayable / duration);
 
+    if (req.inFlight) req.inFlight.stage = 'loan-transaction';
     const loan = await sequelize.transaction(async (t) => {
       const createdLoan = await Loan.create({
         memberId:           parsedMemberId,

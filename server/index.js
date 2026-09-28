@@ -38,6 +38,51 @@ const helmet        = require('helmet');
 const cookieParser  = require('cookie-parser');
 const corsOptions   = require('./config/corsOptions');
 
+// In-memory diagnostic ring buffer for live operational telemetry (last 50 requests)
+const recentApiLogs = [];
+const logApiEvent = (item) => {
+  recentApiLogs.push({ ...item, timestamp: new Date().toISOString() });
+  if (recentApiLogs.length > 50) recentApiLogs.shift();
+};
+
+// In-flight request tracker — registered FIRST so it sees requests that stall anywhere in the
+// middleware chain (helmet, CORS, body parsing, auth). A request that never responds never reaches
+// the completed-request log below, so this is the only way to see it from /debug-logs.
+const inFlight = new Map();
+let requestSeq = 0;
+app.use((req, res, next) => {
+  const id = ++requestSeq;
+  const entry = { id, method: req.method, url: req.originalUrl || req.url, stage: 'received', startedAt: Date.now() };
+  inFlight.set(id, entry);
+  req.inFlight = entry;
+  res.on('finish', () => inFlight.delete(id));
+  // 'close' without 'finish' = the connection dropped before we answered (client/proxy gave up)
+  res.on('close', () => {
+    if (!inFlight.has(id)) return;
+    inFlight.delete(id);
+    logApiEvent({
+      method: entry.method, url: entry.url, status: 'aborted-before-response',
+      stage: entry.stage, duration: `${Date.now() - entry.startedAt}ms`, pid: process.pid,
+    });
+  });
+  next();
+});
+// Watchdog: write any request stuck > 30s to stderr.log with the stage it stalled in
+setInterval(() => {
+  for (const e of inFlight.values()) {
+    const age = Date.now() - e.startedAt;
+    if (age > 30000 && !e.reported) {
+      e.reported = true;
+      console.error(`[${new Date().toISOString()}] STUCK pid=${process.pid} ${e.method} ${e.url} stage=${e.stage} age=${age}ms pool=${JSON.stringify(getPoolStats())}`);
+    }
+  }
+}, 5000).unref();
+const getInFlight = () => Array.from(inFlight.values()).map((e) => ({
+  ...e,
+  ageMs: Date.now() - e.startedAt,
+  startedAt: new Date(e.startedAt).toISOString(),
+}));
+
 app.disable('x-powered-by');
 app.use(
   helmet({
@@ -47,13 +92,6 @@ app.use(
 );
 
 app.use(cors(corsOptions));
-
-// In-memory diagnostic ring buffer for live operational telemetry (last 50 requests)
-const recentApiLogs = [];
-const logApiEvent = (item) => {
-  recentApiLogs.push({ ...item, timestamp: new Date().toISOString() });
-  if (recentApiLogs.length > 50) recentApiLogs.shift();
-};
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -94,6 +132,10 @@ app.use(cookieParser());
 
 // Body parser with size limits to protect against memory exhaustion DoS
 app.use(express.json({ limit: '10kb' }));
+app.use((req, res, next) => {
+  if (req.inFlight) req.inFlight.stage = 'body-parsed';
+  next();
+});
 
 // ── Routes ────────────────────────────────────────────────
 const apiRouter = express.Router();
@@ -105,8 +147,15 @@ apiRouter.use('/payments', require('./routes/payments'));
 // DB-free health check — answers instantly even when DB pool is saturated
 apiRouter.get('/health', (req, res) => res.json({ status: 'ok' }));
 // Ping — even lighter than health, used for A/B diagnosis: does it respond while a DB route stalls?
-apiRouter.get('/ping',   (req, res) => res.json({ pong: true, ts: Date.now(), pool: getPoolStats() }));
-apiRouter.get('/debug-logs', (req, res) => res.json({ pool: getPoolStats(), logs: recentApiLogs.slice().reverse() }));
+// pid + uptime identify WHICH Node process answered — LiteSpeed/Passenger may run several, each with its own pool
+const processInfo = () => ({ pid: process.pid, uptimeSec: Math.round(process.uptime()) });
+apiRouter.get('/ping',   (req, res) => res.json({ pong: true, ts: Date.now(), ...processInfo(), pool: getPoolStats() }));
+apiRouter.get('/debug-logs', (req, res) => res.json({
+  ...processInfo(),
+  pool: getPoolStats(),
+  inFlight: getInFlight().filter((e) => !e.url.includes('/debug-logs')),
+  logs: recentApiLogs.slice().reverse(),
+}));
 
 // Support both /api/... and /... (prevents 404s regardless of cPanel Passenger baseURI mapping)
 app.use('/api', apiRouter);

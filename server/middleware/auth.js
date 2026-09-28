@@ -25,11 +25,13 @@ const protect = async (req, res, next) => {
   for (const token of candidates) {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+      if (req.inFlight) req.inFlight.stage = 'auth-db-lookup';
       const user = await User.findByPk(decoded.id);
 
       if (!user) continue;
 
       req.user = user;
+      if (req.inFlight) req.inFlight.stage = 'handler';
       return next();
     } catch {
       // Try next candidate if verification fails
