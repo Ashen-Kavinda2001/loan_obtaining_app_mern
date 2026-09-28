@@ -200,8 +200,6 @@ app.use((err, req, res, next) => {
 
 // ── Start ─────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
-
-// KeepAlive timeouts aligned with LiteSpeed / Passenger reverse proxy (prevents 408 race conditions)
-server.keepAliveTimeout = 65000;
-server.headersTimeout = 66000;
+// Node's default keep-alive (5s) is used deliberately: a 65s override (an AWS ALB recommendation)
+// coincided with requests being held in front of Node on LiteSpeed.
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
