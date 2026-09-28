@@ -19,7 +19,7 @@ if (!process.env.MYSQL_URI) {
 
 const express       = require('express');
 const cors          = require('cors');
-const { connectDB } = require('./config/db');
+const { connectDB, getPoolStats } = require('./config/db');
 require('./models'); // Loads models and associations
 const initializeApp = require('./init');
 
@@ -105,8 +105,8 @@ apiRouter.use('/payments', require('./routes/payments'));
 // DB-free health check — answers instantly even when DB pool is saturated
 apiRouter.get('/health', (req, res) => res.json({ status: 'ok' }));
 // Ping — even lighter than health, used for A/B diagnosis: does it respond while a DB route stalls?
-apiRouter.get('/ping',   (req, res) => res.json({ pong: true, ts: Date.now() }));
-apiRouter.get('/debug-logs', (req, res) => res.json({ logs: recentApiLogs.slice().reverse() }));
+apiRouter.get('/ping',   (req, res) => res.json({ pong: true, ts: Date.now(), pool: getPoolStats() }));
+apiRouter.get('/debug-logs', (req, res) => res.json({ pool: getPoolStats(), logs: recentApiLogs.slice().reverse() }));
 
 // Support both /api/... and /... (prevents 404s regardless of cPanel Passenger baseURI mapping)
 app.use('/api', apiRouter);
@@ -120,6 +120,9 @@ app.use((err, req, res, next) => {
   res.locals.lastError = err.message;
   // Timestamp + method + path in every error log for easy correlation with LiteSpeed access logs
   console.error(`[${new Date().toISOString()}] ${req.method} ${req.path} — ${err.name}: ${err.message}`);
+  if (err.name === 'SequelizeConnectionAcquireTimeoutError') {
+    console.error('   DB pool exhausted:', JSON.stringify(getPoolStats()));
+  }
   if (res.headersSent) return next(err);
 
   const isProduction = process.env.NODE_ENV === 'production';

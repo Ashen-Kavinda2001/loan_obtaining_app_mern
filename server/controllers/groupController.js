@@ -1,4 +1,4 @@
-const { Op } = require('sequelize');
+const { Op, fn, col } = require('sequelize');
 const { Group, Member } = require('../models');
 
 // @desc    Get all groups with member counts + ungrouped count
@@ -8,16 +8,20 @@ const getGroups = async (req, res, next) => {
   try {
     const groups = await Group.findAll({ order: [['createdAt', 'ASC']] });
 
-    const groupsWithCount = await Promise.all(
-      groups.map(async (g) => {
-        const memberCount = await Member.count({ where: { groupId: g.id } });
-        return { ...g.toJSON(), memberCount };
-      })
-    );
-
-    const ungroupedCount = await Member.count({
-      where: { groupId: null },
+    // One grouped COUNT instead of one query per group (which fanned out across the whole pool)
+    const counts = await Member.findAll({
+      attributes: ['groupId', [fn('COUNT', col('id')), 'count']],
+      group: ['groupId'],
+      raw: true,
     });
+    const countByGroup = new Map(counts.map((c) => [c.groupId, Number(c.count)]));
+
+    const groupsWithCount = groups.map((g) => ({
+      ...g.toJSON(),
+      memberCount: countByGroup.get(g.id) || 0,
+    }));
+
+    const ungroupedCount = countByGroup.get(null) || 0;
 
     res.json({ groups: groupsWithCount, ungroupedCount });
   } catch (err) {
