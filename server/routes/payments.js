@@ -7,7 +7,7 @@ const { financialActionLimiter } = require('../middleware/rateLimiters');
 router.use(protect);
 
 router.get('/',            authorize('admin', 'loan_officer'),                         getPayments);
-router.patch('/:id/pay',   authorize('admin', 'loan_officer'), financialActionLimiter, markPaid);
+router.post('/:id/pay',    authorize('admin', 'loan_officer'), financialActionLimiter, markPaid);
 router.patch('/:id/unpay', authorize('admin'),                 financialActionLimiter, markUnpaid);
 
 module.exports = router;

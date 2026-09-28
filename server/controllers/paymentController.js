@@ -29,7 +29,10 @@ const getPayments = async (req, res, next) => {
 //          cascades forward — fully covering subsequent installments
 //          in order (month by month). Any leftover partial excess
 //          reduces the next installment's due amount.
-// @route   PATCH /api/payments/:id/pay
+// @route   POST /api/payments/:id/pay
+//          (POST, not PATCH: some shared-hosting WAF/ModSecurity configs silently
+//          blackhole PATCH requests that carry a JSON body; POST with the same
+//          body is unaffected — see /unpay, which has no body and works fine as PATCH.)
 // @access  Private
 const markPaid = async (req, res, next) => {
   const paymentId = parseInt(req.params.id, 10);

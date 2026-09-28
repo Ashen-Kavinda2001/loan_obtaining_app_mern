@@ -151,7 +151,7 @@ export default function LoanDetails() {
       return;
     }
     try {
-      await client.patch(`/payments/${p._id}/pay`, { amountPaid: amount });
+      await client.post(`/payments/${p._id}/pay`, { amountPaid: amount });
       setAmountInputs(prev => { const n = { ...prev }; delete n[p._id]; return n; });
       await refresh(loanId);
     } catch (err) {
