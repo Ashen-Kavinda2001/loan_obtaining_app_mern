@@ -60,14 +60,24 @@ const initializeApp = async () => {
     const isResetBoot = process.env.RESET_ADMIN_ON_BOOT === 'true';
 
     // ── 1. Client Admin (Primary) ───────────────────────────────────────────
-    const clientEmail = process.env.ADMIN_EMAIL || 'ashenkavinda.dev@gmail.com';
-    const clientPassword = process.env.ADMIN_PASSWORD || 'Nalin@123';
-    await ensureAdminUser(clientEmail, clientPassword, 'Client Admin', isResetBoot);
+    // S1: No hardcoded fallback credentials — must be supplied via .env
+    const clientEmail    = process.env.ADMIN_EMAIL;
+    const clientPassword = process.env.ADMIN_PASSWORD;
+    if (!clientEmail || !clientPassword) {
+      console.warn('⚠️  ADMIN_EMAIL or ADMIN_PASSWORD not set in .env — skipping Client Admin init.');
+    } else {
+      await ensureAdminUser(clientEmail, clientPassword, 'Client Admin', isResetBoot);
+    }
 
     // ── 2. Developer Admin (Support & Maintenance) ───────────────────────────
-    const devEmail = process.env.DEV_ADMIN_EMAIL || 'kavi2shen@gmail.com';
-    const devPassword = process.env.DEV_ADMIN_PASSWORD || 'Ashen@123';
-    await ensureAdminUser(devEmail, devPassword, 'Developer Admin', isResetBoot);
+    // S1: No hardcoded fallback credentials — must be supplied via .env
+    const devEmail    = process.env.DEV_ADMIN_EMAIL;
+    const devPassword = process.env.DEV_ADMIN_PASSWORD;
+    if (!devEmail || !devPassword) {
+      console.warn('⚠️  DEV_ADMIN_EMAIL or DEV_ADMIN_PASSWORD not set in .env — skipping Developer Admin init.');
+    } else {
+      await ensureAdminUser(devEmail, devPassword, 'Developer Admin', isResetBoot);
+    }
 
     if (isResetBoot) {
       console.warn('⚠️  RESET_ADMIN_ON_BOOT is true — set it back to false in .env immediately!');
@@ -76,6 +86,7 @@ const initializeApp = async () => {
     console.error('❌ Initialization error:', err.message);
   }
 };
+
 
 module.exports = initializeApp;
 

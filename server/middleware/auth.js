@@ -30,6 +30,15 @@ const protect = async (req, res, next) => {
 
       if (!user) continue;
 
+      // S2: Reject tokens issued before the last password change / reset.
+      // ensureAdminUser and the password-change route both bump tokenVersion.
+      if (
+        typeof decoded.tokenVersion === 'number' &&
+        decoded.tokenVersion !== user.tokenVersion
+      ) {
+        continue; // Token is stale — force re-login
+      }
+
       req.user = user;
       if (req.inFlight) req.inFlight.stage = 'handler';
       return next();

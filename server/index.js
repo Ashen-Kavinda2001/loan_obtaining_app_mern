@@ -22,6 +22,7 @@ const cors          = require('cors');
 const { connectDB, getPoolStats } = require('./config/db');
 require('./models'); // Loads models and associations
 const initializeApp = require('./init');
+const { protect, authorize } = require('./middleware/auth');
 
 // Connect to MySQL, then run first-time admin setup if needed
 connectDB()
@@ -150,12 +151,13 @@ apiRouter.get('/health', (req, res) => res.json({ status: 'ok' }));
 // pid + uptime identify WHICH Node process answered — LiteSpeed/Passenger may run several, each with its own pool
 const processInfo = () => ({ pid: process.pid, uptimeSec: Math.round(process.uptime()) });
 apiRouter.get('/ping',   (req, res) => res.json({ pong: true, ts: Date.now(), ...processInfo(), pool: getPoolStats() }));
-apiRouter.get('/debug-logs', (req, res) => res.json({
+apiRouter.get('/debug-logs', protect, authorize('admin'), (req, res) => res.json({
   ...processInfo(),
   pool: getPoolStats(),
   inFlight: getInFlight().filter((e) => !e.url.includes('/debug-logs')),
   logs: recentApiLogs.slice().reverse(),
 }));
+
 
 // Support both /api/... and /... (prevents 404s regardless of cPanel Passenger baseURI mapping)
 app.use('/api', apiRouter);

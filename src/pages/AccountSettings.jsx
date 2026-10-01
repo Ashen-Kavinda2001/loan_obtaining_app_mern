@@ -123,7 +123,14 @@ export default function AccountSettings() {
         currentPassword: emailForm.currentPassword,
         newEmail: trimmedEmail,
       });
-      // Session cookie is automatically refreshed by server
+      // Persist the refreshed token so the new email appears everywhere immediately (B18)
+      if (data.token) {
+        localStorage.setItem('fgi_token', data.token);
+      }
+      if (data.email) {
+        const stored = JSON.parse(localStorage.getItem('fgi_user') || '{}');
+        localStorage.setItem('fgi_user', JSON.stringify({ ...stored, email: data.email }));
+      }
       setCurrentEmail(data.email);
       setEmailStatus({ type: 'success', msg: `Email updated to ${data.email}` });
       setEmailForm({ currentPassword: '', newEmail: '' });
@@ -168,7 +175,10 @@ export default function AccountSettings() {
         currentPassword: passForm.currentPassword,
         newPassword: passForm.newPassword,
       });
-      // Session cookie is automatically refreshed by server
+      // Persist the refreshed token so subsequent requests use the new credentials (B18)
+      if (data.token) {
+        localStorage.setItem('fgi_token', data.token);
+      }
       setPassStatus({ type: 'success', msg: 'Password changed successfully.' });
       setPassForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch (err) {
@@ -327,7 +337,7 @@ export default function AccountSettings() {
               onChange={e => setPassForm({ ...passForm, newPassword: e.target.value })}
               show={showNew}
               onToggle={() => setShowNew(p => !p)}
-              placeholder="At least 6 characters"
+              placeholder="At least 8 characters"
             />
 
             {/* Password strength bar */}
