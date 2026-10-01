@@ -26,16 +26,15 @@ const protect = async (req, res, next) => {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
       if (req.inFlight) req.inFlight.stage = 'auth-db-lookup';
-      const user = await User.findByPk(decoded.id);
+      // Only what handlers need: never load the password hash on every request
+      const user = await User.findByPk(decoded.id, { attributes: ['id', 'email', 'role', 'tokenVersion'] });
 
       if (!user) continue;
 
       // S2: Reject tokens issued before the last password change / reset.
       // ensureAdminUser and the password-change route both bump tokenVersion.
-      if (
-        typeof decoded.tokenVersion === 'number' &&
-        decoded.tokenVersion !== user.tokenVersion
-      ) {
+      // A token without the claim counts as version 0, so it cannot outlive a password change.
+      if ((decoded.tokenVersion ?? 0) !== (user.tokenVersion ?? 0)) {
         continue; // Token is stale — force re-login
       }
 
