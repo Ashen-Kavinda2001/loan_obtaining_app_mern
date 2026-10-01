@@ -3,7 +3,9 @@ import { CreditCard, Calculator } from 'lucide-react';
 import client from '../api/client';
 import { formatCurrency } from '../data/demoData';
 
-const getTodayDate = () => new Date().toISOString().slice(0, 10);
+// B21: the device's local date ('en-CA' formats as YYYY-MM-DD); toISOString() would give the UTC
+// date, which is still yesterday in Sri Lanka until 05:30
+const getTodayDate = () => new Date().toLocaleDateString('en-CA');
 const getInitialForm = () => ({
   memberId: '', loanAmount: '', interestRate: 30, loanDuration: '', startDate: getTodayDate()
 });
@@ -36,11 +38,13 @@ export default function GrantLoan() {
     const dur  = parseInt(form.loanDuration)   || 0;
     const rate = parseFloat(form.interestRate) || 0;
     if (amt > 0 && dur > 0) {
-      const total   = amt * (1 + rate / 100);
-      const weekly = total / dur;
-      return { total: Math.round(total), weekly: Math.round(weekly) };
+      // Same split as the server: the first `extra` weeks are Rs. 1 more so the weeks add up exactly
+      const total = Math.round(amt * (1 + rate / 100));
+      const base  = Math.floor(total / dur);
+      const extra = total - base * dur;
+      return { total, weekly: extra ? base + 1 : base, base, extra };
     }
-    return { total: 0, weekly: 0 };
+    return { total: 0, weekly: 0, base: 0, extra: 0 };
   }, [form.loanAmount, form.loanDuration, form.interestRate]);
 
   const validate = () => {
@@ -211,7 +215,13 @@ export default function GrantLoan() {
                 <div style={{ fontSize: 26, fontWeight: 800 }}>
                   {calc.weekly ? formatCurrency(calc.weekly) : '—'}
                 </div>
-                {form.loanDuration > 0 && <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>× {form.loanDuration} weeks</div>}
+                {form.loanDuration > 0 && calc.weekly > 0 && (
+                  <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>
+                    {calc.extra
+                      ? `${calc.extra} weeks × ${formatCurrency(calc.base + 1)}, then ${form.loanDuration - calc.extra} × ${formatCurrency(calc.base)}`
+                      : `× ${form.loanDuration} weeks`}
+                  </div>
+                )}
               </div>
 
               {calc.total > 0 && (

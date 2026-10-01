@@ -1,12 +1,39 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, ChevronUp, CheckCircle, RotateCcw, Search, CreditCard, Trash2, AlertTriangle, X } from 'lucide-react';
 import client from '../api/client';
 import { formatCurrency } from '../data/demoData';
 
+// One key per payment attempt; the server returns the original result if it sees the same key again
+const newIdempotencyKey = () =>
+  crypto.randomUUID
+    ? crypto.randomUUID()
+    : Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+
+// Plain-language preview of what an overpayment will do (mirrors the server's oldest-first rule)
+function describeOverpayment(rows, target, amount) {
+  let excess = Math.round((amount - target.amountDue) * 100);
+  const covered = [];
+  let reduced = null;
+  const open = rows.filter(r => r._id !== target._id && r.status !== 'paid').sort((a, b) => a.monthNumber - b.monthNumber);
+  for (const r of open) {
+    if (excess <= 0) break;
+    const due = Math.round(r.amountDue * 100);
+    if (excess >= due) { covered.push(r.monthNumber); excess -= due; }
+    else { reduced = { week: r.monthNumber, by: excess / 100 }; excess = 0; }
+  }
+  const parts = [];
+  if (covered.length) parts.push(`pays Week${covered.length > 1 ? 's' : ''} ${covered.join(', ')} in full`);
+  if (reduced) parts.push(`reduces Week ${reduced.week} by ${formatCurrency(reduced.by)}`);
+  return parts.join(' and ');
+}
+
 /* ─────────────────────────────────────────────────────────────
-   ConfirmModal — replaces window.confirm() with a styled dialog
+   ConfirmModal — replaces window.confirm() with a styled dialog.
+   With `prompt`, it also asks for text (e.g. a reason) and passes it to onConfirm.
    ───────────────────────────────────────────────────────────── */
-function ConfirmModal({ title, message, confirmLabel = 'Confirm', danger = false, onConfirm, onCancel }) {
+function ConfirmModal({ title, message, confirmLabel = 'Confirm', danger = false, prompt = null, onConfirm, onCancel }) {
+  const [value, setValue] = useState('');
+  const canConfirm = !prompt || value.trim().length >= (prompt.minLength || 1);
   return (
     <div style={{
       position: 'fixed', inset: 0,
@@ -35,6 +62,21 @@ function ConfirmModal({ title, message, confirmLabel = 'Confirm', danger = false
           </div>
         </div>
 
+        {prompt && (
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label" htmlFor="confirm-prompt">{prompt.label}</label>
+            <input
+              id="confirm-prompt"
+              className="form-control"
+              autoFocus
+              maxLength={255}
+              placeholder={prompt.placeholder}
+              value={value}
+              onChange={e => setValue(e.target.value)}
+            />
+          </div>
+        )}
+
         {/* Actions */}
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
           <button
@@ -52,8 +94,10 @@ function ConfirmModal({ title, message, confirmLabel = 'Confirm', danger = false
                 ? 'linear-gradient(135deg,#DC2626,#EF4444)'
                 : 'linear-gradient(135deg,#D97706,#F59E0B)',
               color: '#fff',
+              opacity: canConfirm ? 1 : 0.5,
             }}
-            onClick={onConfirm}
+            disabled={!canConfirm}
+            onClick={() => onConfirm(value.trim())}
           >
             {confirmLabel}
           </button>
@@ -103,6 +147,9 @@ export default function LoanDetails() {
   // ── Custom confirm modal state ──────────────────────────────
   const [confirm, setConfirm] = useState(null); // { title, message, confirmLabel, danger, onConfirm }
   const [errMsg, setErrMsg]   = useState('');    // replaces alert()
+  const [payingIds, setPayingIds] = useState(() => new Set()); // B7: payments with a request in flight
+  // paymentId → { key, amount } kept when a request got no response, so trying again reuses the key
+  const pendingKeys = useRef({});
 
   // ── Fetch all loans ──────────────────────────────────────
   useEffect(() => {
@@ -143,27 +190,61 @@ export default function LoanDetails() {
   };
 
   // ── Mark a payment as PAID ────────────────────────────────
-  const markPaid = async (p, loanId) => {
+  const markPaid = (p, loan) => {
+    if (payingIds.has(p._id)) return;
     const raw    = amountInputs[p._id];
     const amount = (raw !== undefined && raw !== '') ? parseFloat(raw) : parseFloat(p.amountDue);
     if (isNaN(amount) || amount <= 0) {
       setErrMsg('Please enter a valid amount paid.');
       return;
     }
-    try {
-      await client.post(`/payments/${p._id}/pay`, { amountPaid: amount });
-      setAmountInputs(prev => { const n = { ...prev }; delete n[p._id]; return n; });
-      await refresh(loanId);
-    } catch (err) {
-      setErrMsg(err.response?.data?.message || 'Failed to mark payment.');
+    if (Math.round(amount * 100) > Math.round(loan.remainingBalance * 100)) {
+      setErrMsg(`Amount cannot be more than the remaining balance of ${formatCurrency(loan.remainingBalance)}.`);
+      return;
     }
+    // B11: a large amount is often a typo (50000 for 5000); confirm it and show what it will pay
+    if (amount > 3 * loan.monthlyInstallment) {
+      const effect = describeOverpayment(payments[loan._id] || [], p, amount);
+      setConfirm({
+        title:        'Confirm large payment',
+        message:      `Record ${formatCurrency(amount)} for Week ${p.monthNumber}? That is more than three weekly installments.` +
+                      (effect ? ` The extra ${effect}.` : ''),
+        confirmLabel: 'Record Payment',
+        onConfirm:    () => { setConfirm(null); submitPayment(p, loan._id, amount); },
+      });
+      return;
+    }
+    submitPayment(p, loan._id, amount);
+  };
+
+  const submitPayment = async (p, loanId, amount) => {
+    const previous = pendingKeys.current[p._id];
+    const key = previous && previous.amount === amount ? previous.key : newIdempotencyKey();
+    pendingKeys.current[p._id] = { key, amount };
+    setPayingIds(prev => new Set(prev).add(p._id));
+    try {
+      await client.post(`/payments/${p._id}/pay`, { amountPaid: amount }, { headers: { 'Idempotency-Key': key } });
+      delete pendingKeys.current[p._id];
+      setAmountInputs(prev => { const n = { ...prev }; delete n[p._id]; return n; });
+    } catch (err) {
+      if (err.response) {
+        delete pendingKeys.current[p._id];
+        setErrMsg(err.response.data?.message || 'Failed to mark payment.');
+      } else {
+        // No response: the payment may have been saved. Keeping the key means trying again cannot pay twice.
+        setErrMsg('Connection problem: the payment may not have been saved. Check the schedule, then try again.');
+      }
+    } finally {
+      setPayingIds(prev => { const n = new Set(prev); n.delete(p._id); return n; });
+    }
+    refresh(loanId).catch(() => {});
   };
 
   // ── Revert a PAID payment back to pending ─────────────────
   const markUnpaid = (p, loanId) => {
     setConfirm({
       title:        'Revert Payment',
-      message:      'Revert this payment to pending? The loan balance will be updated.',
+      message:      `Revert the payment recorded on Week ${p.monthNumber}? Any weeks it paid in advance and the loan balance go back to how they were before it.`,
       confirmLabel: 'Revert',
       danger:       false,
       onConfirm: async () => {
@@ -178,17 +259,18 @@ export default function LoanDetails() {
     });
   };
 
-  // ── Delete a loan and its entire payment schedule ─────────
+  // ── Delete a loan (kept on the server for audit, hidden everywhere in the app) ──
   const deleteLoan = (loanId, memberName) => {
     setConfirm({
       title:        'Delete Loan',
-      message:      `Permanently delete this loan for ${memberName}? All payment records will also be removed. This cannot be undone.`,
+      message:      `Delete this loan for ${memberName}? It will disappear from all lists and totals. Its payment history is kept for audit.`,
       confirmLabel: 'Delete',
       danger:       true,
-      onConfirm: async () => {
+      prompt:       { label: 'Reason for deleting', placeholder: 'e.g. Entered for the wrong member', minLength: 3 },
+      onConfirm: async (reason) => {
         setConfirm(null);
         try {
-          await client.delete(`/loans/${loanId}`);
+          await client.delete(`/loans/${loanId}`, { params: { reason } });
           setLoans(prev => prev.filter(l => l._id !== loanId));
           setPayments(prev => { const n = { ...prev }; delete n[loanId]; return n; });
           if (expanded === loanId) setExpanded(null);
@@ -243,6 +325,7 @@ export default function LoanDetails() {
           message={confirm.message}
           confirmLabel={confirm.confirmLabel}
           danger={confirm.danger}
+          prompt={confirm.prompt}
           onConfirm={confirm.onConfirm}
           onCancel={() => setConfirm(null)}
         />
@@ -300,6 +383,7 @@ export default function LoanDetails() {
             payments={payments}
             loadingPayments={loadingPayments}
             amountInputs={amountInputs}
+            payingIds={payingIds}
             onExpand={handleExpand}
             onMarkPaid={markPaid}
             onMarkUnpaid={markUnpaid}
@@ -317,7 +401,7 @@ export default function LoanDetails() {
 /* ─────────────────────────────────────────────────────────────
    MemberLoanGroup — single profile header + multiple loan cards
    ───────────────────────────────────────────────────────────── */
-function MemberLoanGroup({ group, expanded, payments, loadingPayments, amountInputs, onExpand, onMarkPaid, onMarkUnpaid, onDeleteLoan, onAmountChange }) {
+function MemberLoanGroup({ group, expanded, payments, loadingPayments, amountInputs, payingIds, onExpand, onMarkPaid, onMarkUnpaid, onDeleteLoan, onAmountChange }) {
   const { memberName, memberVillage, loans } = group;
 
   // Aggregate stats across all this member's loans
@@ -405,7 +489,8 @@ function MemberLoanGroup({ group, expanded, payments, loadingPayments, amountInp
           const loanPayments = payments[loan._id] || [];
           const isExpanded   = expanded === loan._id;
           const paidWeeks    = loanPayments.filter(p => p.status === 'paid').length;
-          const progress     = loan.loanDuration > 0 ? (paidWeeks / loan.loanDuration) * 100 : 0;
+          // An unpaid shortfall on the last week adds an extension week, so cap at 100%
+          const progress     = loan.loanDuration > 0 ? Math.min(100, (paidWeeks / loan.loanDuration) * 100) : 0;
 
           return (
             <div key={loan._id} style={{
@@ -515,6 +600,7 @@ function MemberLoanGroup({ group, expanded, payments, loadingPayments, amountInp
                   loanPayments={loanPayments}
                   loadingPayments={loadingPayments}
                   amountInputs={amountInputs}
+                  payingIds={payingIds}
                   onMarkPaid={onMarkPaid}
                   onMarkUnpaid={onMarkUnpaid}
                   onAmountChange={onAmountChange}
@@ -529,9 +615,46 @@ function MemberLoanGroup({ group, expanded, payments, loadingPayments, amountInp
 }
 
 /* ─────────────────────────────────────────────────────────────
+   Row actions shared by the desktop table and the mobile cards
+   ───────────────────────────────────────────────────────────── */
+function MarkPaidButton({ paying, onClick, style }) {
+  return (
+    <button
+      className="btn btn-success btn-sm"
+      disabled={paying}
+      aria-busy={paying}
+      onClick={onClick}
+      style={{ ...style, ...(paying ? { opacity: 0.6, cursor: 'not-allowed' } : {}) }}
+    >
+      {paying ? 'Saving…' : <><CheckCircle size={13} /> Mark Paid</>}
+    </button>
+  );
+}
+
+// Only the most recent payment can be reverted; weeks paid in advance point at the payment that covered them
+function PaidAction({ p, onRevert, style }) {
+  if (p.canRevert) {
+    return (
+      <button
+        className="btn btn-sm"
+        style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', gap: 4, ...style }}
+        onClick={onRevert}
+      >
+        <RotateCcw size={12} /> Mark Unpaid
+      </button>
+    );
+  }
+  return (
+    <span style={{ fontSize: 12, color: 'var(--color-text-muted)', ...style }}>
+      {p.coveredByWeek ? `Paid with Week ${p.coveredByWeek}` : '—'}
+    </span>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
    PaymentSchedule — desktop table + mobile cards
    ───────────────────────────────────────────────────────────── */
-function PaymentSchedule({ loan, loanPayments, loadingPayments, amountInputs, onMarkPaid, onMarkUnpaid, onAmountChange }) {
+function PaymentSchedule({ loan, loanPayments, loadingPayments, amountInputs, payingIds, onMarkPaid, onMarkUnpaid, onAmountChange }) {
   return (
     <div style={{ borderTop: '1px solid var(--color-border)', background: '#FAFBFF' }}>
       <div style={{ padding: '10px 20px 6px', fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -550,6 +673,7 @@ function PaymentSchedule({ loan, loanPayments, loadingPayments, amountInputs, on
               <thead>
                 <tr>
                   <th>Week</th>
+                  <th>Due</th>
                   <th>Amount Paid</th>
                   <th>Short Amount</th>
                   <th>Paid On</th>
@@ -566,6 +690,8 @@ function PaymentSchedule({ loan, loanPayments, loadingPayments, amountInputs, on
                     <tr key={p._id}>
                       <td style={{ fontWeight: 600 }}>Week {p.monthNumber}</td>
 
+                      <td>{formatCurrency(p.amountDue)}</td>
+
                       <td>
                         {isPaid ? (
                           <span style={{ fontWeight: 600, color: shortfall > 0 ? '#D97706' : 'var(--color-success)' }}>
@@ -575,6 +701,7 @@ function PaymentSchedule({ loan, loanPayments, loadingPayments, amountInputs, on
                           <input
                             type="number"
                             min="1"
+                            aria-label={`Amount paid for week ${p.monthNumber}`}
                             placeholder={`Rs. ${p.amountDue}`}
                             value={amountInputs[p._id] || ''}
                             onChange={e => onAmountChange(p._id, e.target.value)}
@@ -590,8 +717,9 @@ function PaymentSchedule({ loan, loanPayments, loadingPayments, amountInputs, on
 
                       <td>
                         {isPaid && shortfall > 0 ? (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#D97706', fontWeight: 600, fontSize: 13 }}>
+                          <span style={{ display: 'inline-flex', flexDirection: 'column', color: '#D97706', fontWeight: 600, fontSize: 13 }}>
                             ⚠ {formatCurrency(shortfall)}
+                            {p.shortfallCarried && <span style={{ fontSize: 11, fontWeight: 500 }}>added to a later week</span>}
                           </span>
                         ) : (
                           <span style={{ color: 'var(--color-text-muted)' }}>—</span>
@@ -612,20 +740,12 @@ function PaymentSchedule({ loan, loanPayments, loadingPayments, amountInputs, on
 
                       <td>
                         {isPaid ? (
-                          <button
-                            className="btn btn-sm"
-                            style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', gap: 4 }}
-                            onClick={e => { e.stopPropagation(); onMarkUnpaid(p, loan._id); }}
-                          >
-                            <RotateCcw size={12} /> Mark Unpaid
-                          </button>
+                          <PaidAction p={p} onRevert={e => { e.stopPropagation(); onMarkUnpaid(p, loan._id); }} />
                         ) : (
-                          <button
-                            className="btn btn-success btn-sm"
-                            onClick={e => { e.stopPropagation(); onMarkPaid(p, loan._id); }}
-                          >
-                            <CheckCircle size={13} /> Mark Paid
-                          </button>
+                          <MarkPaidButton
+                            paying={payingIds.has(p._id)}
+                            onClick={e => { e.stopPropagation(); onMarkPaid(p, loan); }}
+                          />
                         )}
                       </td>
                     </tr>
@@ -683,7 +803,7 @@ function PaymentSchedule({ loan, loanPayments, loadingPayments, amountInputs, on
 
                     {isPaid && shortfall > 0 && (
                       <div style={{ gridColumn: '1/-1', color: '#D97706', fontWeight: 600, fontSize: 12 }}>
-                        ⚠ Short by {formatCurrency(shortfall)}
+                        ⚠ Short by {formatCurrency(shortfall)}{p.shortfallCarried ? ' (added to a later week)' : ''}
                       </div>
                     )}
                   </div>
@@ -693,6 +813,7 @@ function PaymentSchedule({ loan, loanPayments, loadingPayments, amountInputs, on
                     <input
                       type="number"
                       min="1"
+                      aria-label={`Amount paid for week ${p.monthNumber}`}
                       placeholder={`Enter amount (due: Rs. ${p.amountDue})`}
                       value={amountInputs[p._id] || ''}
                       onChange={e => onAmountChange(p._id, e.target.value)}
@@ -707,25 +828,17 @@ function PaymentSchedule({ loan, loanPayments, loadingPayments, amountInputs, on
 
                   {/* Full-width action button */}
                   {isPaid ? (
-                    <button
-                      className="btn btn-sm"
-                      style={{
-                        width: '100%', justifyContent: 'center',
-                        background: '#FEF2F2', color: '#DC2626',
-                        border: '1px solid #FECACA', padding: '10px',
-                      }}
-                      onClick={() => onMarkUnpaid(p, loan._id)}
-                    >
-                      <RotateCcw size={13} /> Mark Unpaid
-                    </button>
+                    <PaidAction
+                      p={p}
+                      onRevert={() => onMarkUnpaid(p, loan._id)}
+                      style={p.canRevert ? { width: '100%', justifyContent: 'center', padding: '10px' } : { display: 'block', textAlign: 'center' }}
+                    />
                   ) : (
-                    <button
-                      className="btn btn-success btn-sm"
+                    <MarkPaidButton
+                      paying={payingIds.has(p._id)}
+                      onClick={() => onMarkPaid(p, loan)}
                       style={{ width: '100%', justifyContent: 'center', padding: '10px' }}
-                      onClick={() => onMarkPaid(p, loan._id)}
-                    >
-                      <CheckCircle size={13} /> Mark Paid
-                    </button>
+                    />
                   )}
                 </div>
               );

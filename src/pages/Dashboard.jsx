@@ -2,26 +2,35 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Users, CreditCard, DollarSign,
-  TrendingUp, ArrowUpRight, CheckCircle, PlusCircle
+  TrendingUp, TrendingDown, ArrowUpRight, CheckCircle, PlusCircle
 } from 'lucide-react';
 import client from '../api/client';
 import { formatCurrency } from '../data/demoData';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
+// "2026-09-28" → "28 Sep" (weekStart is a local date string, so parse it as local, not UTC)
+const weekLabel = (weekStart) => {
+  const [y, m, d] = weekStart.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+};
+
 export default function Dashboard() {
   const [stats, setStats]   = useState(null);
   const [loans, setLoans]   = useState([]);
+  const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        const [statsRes, loansRes] = await Promise.all([
+        const [statsRes, loansRes, collectionsRes] = await Promise.all([
           client.get('/loans/stats'),
           client.get('/loans'),
+          client.get('/loans/collections', { params: { weeks: 8 } }).catch(() => ({ data: [] })),
         ]);
         setStats(statsRes?.data || null);
         setLoans(Array.isArray(loansRes?.data) ? loansRes.data : []);
+        setCollections(Array.isArray(collectionsRes?.data) ? collectionsRes.data : []);
       } catch (err) {
         console.error('Dashboard fetch error', err);
         setLoans([]);
@@ -32,15 +41,11 @@ export default function Dashboard() {
     fetchAll();
   }, []);
 
-  // Static chart data (can be made dynamic later)
-  const chartData = [
-    { month: 'Dec', collected: 28000 },
-    { month: 'Jan', collected: 35000 },
-    { month: 'Feb', collected: 42000 },
-    { month: 'Mar', collected: 31000 },
-    { month: 'Apr', collected: 48000 },
-    { month: 'May', collected: stats?.collectedThisMonth || 0 },
-  ];
+  // B15: cash actually collected per week (Monday to Sunday), oldest first, current week last
+  const chartData = collections.map(w => ({ week: weekLabel(w.weekStart), collected: w.amount }));
+  const thisWeek = collections[collections.length - 1]?.amount ?? 0;
+  const lastWeek = collections[collections.length - 2]?.amount ?? 0;
+  const weekChange = lastWeek > 0 ? Math.round(((thisWeek - lastWeek) / lastWeek) * 100) : null;
 
   if (loading) return (
     <div className="page-content">
@@ -83,7 +88,7 @@ export default function Dashboard() {
             <DollarSign size={22} color="#F59E0B" />
           </div>
           <div className="stat-info">
-            <div className="stat-label">Total Len</div>
+            <div className="stat-label">Total Lent</div>
             <div className="stat-value" style={{ fontSize: 16 }}>{formatCurrency(stats?.totalAmountLent ?? 0)}</div>
             <div className="stat-sub">All time</div>
           </div>
@@ -114,16 +119,19 @@ export default function Dashboard() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 8 }}>
             <div>
               <div style={{ fontWeight: 700, fontSize: 15 }}>Weekly Collections</div>
-              <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Payments received per week</div>
+              <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Payments received per week (last 8 weeks)</div>
             </div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-success)', display: 'flex', alignItems: 'center', gap: 4 }}>
-              <TrendingUp size={14} />+18% vs last week
-            </div>
+            {weekChange !== null && (
+              <div style={{ fontSize: 13, fontWeight: 600, color: weekChange >= 0 ? 'var(--color-success)' : 'var(--color-danger)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                {weekChange >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                {weekChange >= 0 ? '+' : ''}{weekChange}% vs last week
+              </div>
+            )}
           </div>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={chartData} barSize={24}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-              <XAxis dataKey="month" axisLine={false} tickLine={false} style={{ fontSize: 11 }} />
+              <XAxis dataKey="week" axisLine={false} tickLine={false} style={{ fontSize: 11 }} />
               <YAxis axisLine={false} tickLine={false} style={{ fontSize: 11 }} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} width={36} />
               <Tooltip
                 formatter={(v) => [formatCurrency(v), 'Collected']}
