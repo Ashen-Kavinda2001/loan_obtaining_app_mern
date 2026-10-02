@@ -1,5 +1,6 @@
 const { sequelize, Payment, Loan, Member } = require('../models');
-const { sendPaymentConfirmationSMS } = require('../utils/smsService');
+const { paymentConfirmationMessage } = require('../utils/smsService');
+const { sendLogged } = require('../services/smsReceipts');
 const { invalidateStatsCache } = require('./loanController');
 const { todayLocal } = require('../utils/dates');
 const httpError = require('../utils/httpError');
@@ -151,17 +152,23 @@ const markPaid = async (req, res, next) => {
     invalidateStatsCache();
     res.json(result);
 
-    // Fire-and-forget SMS receipt; a slow gateway never delays the response
+    // Fire-and-forget SMS receipt; a slow gateway never delays the response. Every attempt is
+    // recorded in SmsLogs (services/smsReceipts), so staff can see and resend failed receipts.
     setImmediate(async () => {
       try {
         const fullLoan = await Loan.findByPk(loanId, { include: [{ model: Member, as: 'member' }] });
         if (fullLoan && fullLoan.member && fullLoan.member.contactNumber) {
-          await sendPaymentConfirmationSMS({
-            memberName:       fullLoan.member.fullName || 'Customer',
-            contactNumber:    fullLoan.member.contactNumber,
-            amountPaid,
-            monthNumber:      result.monthNumber,
-            remainingBalance: fullLoan.remainingBalance,
+          await sendLogged({
+            loanId,
+            paymentId: result.id,
+            memberId:  fullLoan.member.id,
+            phone:     fullLoan.member.contactNumber,
+            message:   paymentConfirmationMessage({
+              memberName:       fullLoan.member.fullName || 'Customer',
+              amountPaid,
+              monthNumber:      result.monthNumber,
+              remainingBalance: fullLoan.remainingBalance,
+            }),
           });
         }
       } catch (smsErr) {

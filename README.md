@@ -20,7 +20,8 @@ server/
   services/loanMath.js  All loan and payment maths (pure functions, unit-tested)
   models/             Sequelize models
   validators/         zod schemas for request bodies and queries
-  scripts/            migrate, sync-overdue (daily cron), check-loans (loan health check)
+  migrations/         numbered schema changes, applied by `npm run migrate` (db/migrator.js)
+  scripts/            migrate, sync-overdue and retry-sms (cron jobs), check-loans (loan health check)
   tests/              Unit tests: npm test
 ```
 
@@ -33,7 +34,7 @@ Requirements: Node.js 20+ and a MySQL or MariaDB database.
 cd server
 cp .env.example .env        # fill in MYSQL_URI, JWT_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD …
 npm install
-npm run migrate             # adds any missing columns and indexes
+npm run migrate             # applies pending migrations (creates and updates tables)
 npm run dev                 # http://localhost:5000
 
 # Frontend (second terminal, project root)
@@ -62,7 +63,7 @@ Merging into `main` deploys automatically (`.github/workflows/deploy.yml`):
 Things the deploy does **not** do:
 
 - **New backend dependency:** cPanel → Setup Node.js App → *Run NPM Install*.
-- **New database column or index:** run `npm run migrate` in the cPanel terminal. The server does not change the database when it starts.
+- **New migration** (a file added to `server/migrations/`): run `npm run migrate` in the cPanel terminal. The server never changes the database when it starts. The cron scripts also apply pending migrations before they run.
 - **Environment variables:** set them in cPanel → Setup Node.js App (see `server/.env.example`).
 
 ## Operations
@@ -72,7 +73,8 @@ Things the deploy does **not** do:
 | Daily overdue update (cron, `5 0 * * *`) | `node scripts/sync-overdue.js` |
 | Check loans for wrong balances (read-only) | `node scripts/check-loans.js` |
 | Correct them | `node scripts/check-loans.js --fix` (add `--loan=ID` for one loan) |
-| Add missing columns and indexes | `node scripts/migrate.js` |
+| Apply pending migrations | `node scripts/migrate.js` |
+| Retry failed receipt SMS (cron, `*/30 * * * *`) | `node scripts/retry-sms.js` |
 
 Before running a command, activate the app's Node environment: copy the `source …/activate` line
 from the top of cPanel → Setup Node.js App.
@@ -87,3 +89,17 @@ All money rules are in `server/services/loanMath.js`:
 - **Cap:** a payment can never exceed the remaining balance.
 - **Completion:** a loan is completed only when nothing is owed.
 - **Reversal:** only the latest payment can be reverted, and that restores the schedule exactly.
+
+## SMS receipts
+
+Every payment sends a receipt SMS (Text.lk) in the background, and records it in the `SmsLogs` table.
+The loan page shows each receipt under the payment schedule:
+
+| Status | Meaning | What happens |
+|---|---|---|
+| Sent | The gateway accepted it | Nothing to do |
+| Failed | The gateway rejected it or could not be reached, so nothing was sent | Retried by the `retry-sms` cron job (up to 3 attempts, receipts from the last 2 days) |
+| Not confirmed | No clear answer (timeout, gateway error) — the customer may have it | Never retried automatically; an admin can press **Resend** |
+| Not sent | SMS switched off, or no valid phone number | Nothing to do |
+
+If the `SmsLogs` table does not exist yet, payments and SMS work as before; only the log is missing.

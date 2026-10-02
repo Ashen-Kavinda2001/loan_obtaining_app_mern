@@ -31,12 +31,18 @@ const formatPhoneNumber = (phone) => {
   return cleaned;
 };
 
+// Connection errors that happen before anything reaches the gateway: nothing was sent, safe to retry
+const NOT_SENT_ERRORS = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ENETUNREACH', 'EHOSTUNREACH', 'CERT_HAS_EXPIRED']);
+
 /**
  * Sends a generic SMS message via text.lk API.
  * Uses JSON body with api_token in the payload (text.lk's required format).
  * @param {string} recipientPhone - Raw or formatted recipient number
  * @param {string} messageText    - Text message content
- * @returns {Promise<{success: boolean, data?: any, error?: string}>}
+ * @returns {Promise<{success: boolean, outcome: string, data?: any, error?: string, recipient?: string}>}
+ *   outcome (stored in SmsLogs.status, see models/SmsLog.js):
+ *     'sent' accepted · 'failed' rejected or unreachable, nothing sent · 'unknown' no clear answer ·
+ *     'skipped' not attempted (disabled, no token, bad number)
  */
 const sendSMS = async (recipientPhone, messageText) => {
   const isEnabled = process.env.SMS_ENABLED !== 'false';
@@ -45,22 +51,25 @@ const sendSMS = async (recipientPhone, messageText) => {
 
   if (!isEnabled) {
     console.log('ℹ️  SMS sending is disabled (SMS_ENABLED=false).');
-    return { success: false, error: 'SMS disabled' };
+    return { success: false, outcome: 'skipped', error: 'SMS disabled' };
   }
 
   if (!apiToken || apiToken === 'your-api-token-here') {
     console.warn('⚠️  TEXTLK_API_TOKEN is not configured in .env. Skipping SMS.');
-    return { success: false, error: 'API token not configured' };
+    return { success: false, outcome: 'skipped', error: 'API token not configured' };
   }
 
   const formattedRecipient = formatPhoneNumber(recipientPhone);
   if (!formattedRecipient) {
     console.warn(`⚠️  Invalid recipient phone number: ${recipientPhone}`);
-    return { success: false, error: 'Invalid phone number' };
+    return { success: false, outcome: 'skipped', error: 'Invalid phone number' };
   }
 
+  // TEXTLK_API_URL only exists so tests can point at a fake gateway
+  const url = new URL(process.env.TEXTLK_API_URL || 'https://app.text.lk/api/http/sms/send');
+
   return new Promise((resolve) => {
-    const https = require('https');
+    const transport = url.protocol === 'http:' ? require('http') : require('https');
 
     const payload = JSON.stringify({
       recipient:  formattedRecipient,
@@ -69,10 +78,10 @@ const sendSMS = async (recipientPhone, messageText) => {
       api_token:  apiToken,
     });
 
-    const req = https.request({
-      hostname: 'app.text.lk',
-      port:     443,
-      path:     '/api/http/sms/send',
+    const req = transport.request({
+      hostname: url.hostname,
+      port:     url.port || (url.protocol === 'http:' ? 80 : 443),
+      path:     url.pathname,
       method:   'POST',
       timeout:  30000, // 30s timeout allows text.lk Cloudflare + telco delivery to complete
       headers: {
@@ -89,23 +98,27 @@ const sendSMS = async (recipientPhone, messageText) => {
 
         if (res.statusCode >= 400 || data.status === 'error') {
           console.error(`❌ text.lk error (HTTP ${res.statusCode}):`, data);
-          return resolve({ success: false, error: data.message || `HTTP ${res.statusCode}`, data });
+          // A 5xx may come from a proxy after the SMS was queued, so only a 4xx or an explicit
+          // error answer is a definite "not sent"
+          const outcome = res.statusCode >= 500 ? 'unknown' : 'failed';
+          return resolve({ success: false, outcome, error: data.message || `HTTP ${res.statusCode}`, data, recipient: formattedRecipient });
         }
 
         console.log(`📱 SMS sent to ${formattedRecipient} via text.lk:`, data);
-        resolve({ success: true, data });
+        resolve({ success: true, outcome: 'sent', data, recipient: formattedRecipient });
       });
     });
 
     req.on('timeout', () => {
       req.destroy();
       console.warn('⚠️  text.lk request timed out after 30s.');
-      resolve({ success: false, error: 'SMS gateway timeout' });
+      resolve({ success: false, outcome: 'unknown', error: 'SMS gateway timeout', recipient: formattedRecipient });
     });
 
-    req.on('error', (err) => {
+    req.on('error', (err) => { // after a timeout this fires too; the promise already settled as 'unknown'
       console.error('❌ Error sending SMS via text.lk:', err.message);
-      resolve({ success: false, error: err.message });
+      const outcome = NOT_SENT_ERRORS.has(err.code) ? 'failed' : 'unknown';
+      resolve({ success: false, outcome, error: err.message, recipient: formattedRecipient });
     });
 
     req.write(payload);
@@ -134,16 +147,19 @@ const sendPaymentConfirmationSMS = async ({
     return;
   }
 
+  return sendSMS(contactNumber, paymentConfirmationMessage({ memberName, amountPaid, monthNumber, remainingBalance }));
+};
+
+// The receipt text, shared by sendPaymentConfirmationSMS and services/smsReceipts
+const paymentConfirmationMessage = ({ memberName, amountPaid, monthNumber, remainingBalance }) => {
   const formattedAmount = Number(amountPaid).toLocaleString();
   const formattedBalance = Number(remainingBalance).toLocaleString();
-
-  const message = `Dear ${memberName}, your loan payment of Rs. ${formattedAmount} (Week ${monthNumber}) has been received. Remaining balance: Rs. ${formattedBalance}. Thank you! - FGI Loan Services`;
-
-  return sendSMS(contactNumber, message);
+  return `Dear ${memberName}, your loan payment of Rs. ${formattedAmount} (Week ${monthNumber}) has been received. Remaining balance: Rs. ${formattedBalance}. Thank you! - FGI Loan Services`;
 };
 
 module.exports = {
   formatPhoneNumber,
   sendSMS,
   sendPaymentConfirmationSMS,
+  paymentConfirmationMessage,
 };

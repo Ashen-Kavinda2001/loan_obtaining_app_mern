@@ -5,6 +5,7 @@ const Member = require('./Member');
 const Loan = require('./Loan');
 const Payment = require('./Payment');
 const PasswordReset = require('./PasswordReset');
+const SmsLog = require('./SmsLog'); // no associations: kept even if its loan or payment changes
 
 // ── Relationships ─────────────────────────────────────────
 
@@ -50,4 +51,5 @@ module.exports = {
   Loan,
   Payment,
   PasswordReset,
+  SmsLog,
 };
