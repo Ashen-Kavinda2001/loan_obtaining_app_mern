@@ -1,25 +1,88 @@
-const { Op, QueryTypes } = require('sequelize');
+const { Op } = require('sequelize');
 const { sequelize, Loan, Member, Payment } = require('../models');
-const { buildSchedule, toCents } = require('../services/loanMath');
-const { todayLocal, monthRange, startOfWeek, addDays, localMidnight, toLocalDateString } = require('../utils/dates');
-const httpError = require('../utils/httpError');
 
-// Payments that are real cash events: auto-paid rows only mirror part of another row's cash (B5)
-const CASH_RECEIPTS = `p.status = 'paid' AND (p.isAutoPaid = 0 OR p.isAutoPaid IS NULL)`;
+// Helper — generate weekly payment schedule for a loan
+const generateSchedule = (loanId, startDate, weeklyInstallment, duration) => {
+  const payments = [];
+  const start = new Date(startDate);
 
-// Ids of loans with an open installment whose due date has passed: read-time "overdue" (B13)
-const findPastDueLoanIds = async (today) => {
-  const rows = await sequelize.query(
-    `SELECT DISTINCT loanId FROM Payments WHERE status IN ('pending', 'overdue') AND dueDate < :today`,
-    { replacements: { today }, type: QueryTypes.SELECT },
-  );
-  return new Set(rows.map((r) => r.loanId));
+  for (let i = 1; i <= duration; i++) {
+    const dueDate = new Date(start);
+    dueDate.setDate(dueDate.getDate() + 7 * i);
+
+    payments.push({
+      loanId,
+      monthNumber: i,
+      amountDue:   Math.round(weeklyInstallment),
+      amountPaid:  0,
+      dueDate,
+      paidAt:      null,
+      status:      'pending',
+    });
+  }
+  return payments;
 };
 
-// Completed only when nothing is owed (B12); otherwise overdue or active from today's date
-const loanStatus = (loan, pastDueIds) => {
-  if (toCents(loan.remainingBalance) <= 0) return 'completed';
-  return pastDueIds.has(loan.id) ? 'overdue' : 'active';
+// Helper — sync overdue status for past-due pending installments and loans (throttled to avoid DB lockups)
+let lastOverdueSync = 0;
+const syncOverdueStatus = async () => {
+  const now = Date.now();
+  if (now - lastOverdueSync < 10 * 60 * 1000) return; // Run at most once every 10 minutes
+  lastOverdueSync = now;
+
+  try {
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    // 1. Mark pending payments whose dueDate has passed as overdue
+    await Payment.update(
+      { status: 'overdue' },
+      {
+        where: {
+          status: 'pending',
+          dueDate: { [Op.lt]: todayStr },
+        },
+      }
+    );
+
+    // 2. Find all loans that have overdue payments
+    const overduePayments = await Payment.findAll({
+      where: { status: 'overdue' },
+      attributes: ['loanId'],
+      group: ['loanId'],
+    });
+
+    const overdueLoanIds = overduePayments.map((p) => p.loanId);
+
+    if (overdueLoanIds.length > 0) {
+      await Loan.update(
+        { status: 'overdue' },
+        {
+          where: {
+            id: { [Op.in]: overdueLoanIds },
+            status: 'active',
+          },
+        }
+      );
+      await Loan.update(
+        { status: 'active' },
+        {
+          where: {
+            id: { [Op.notIn]: overdueLoanIds },
+            status: 'overdue',
+          },
+        }
+      );
+    } else {
+      await Loan.update(
+        { status: 'active' },
+        {
+          where: { status: 'overdue' },
+        }
+      );
+    }
+  } catch (err) {
+    console.error('Error syncing overdue status:', err.message);
+  }
 };
 
 // @desc    Get all loans (with member info populated)
@@ -27,19 +90,18 @@ const loanStatus = (loan, pastDueIds) => {
 // @access  Private
 const getLoans = async (req, res, next) => {
   try {
-    const [loans, pastDueIds] = await Promise.all([
-      Loan.findAll({
-        include: [
-          {
-            model: Member,
-            as: 'member',
-            attributes: ['id', 'fullName', 'village', 'idNumber'],
-          },
-        ],
-        order: [['createdAt', 'DESC']],
-      }),
-      findPastDueLoanIds(todayLocal()),
-    ]);
+    // Fire overdue sync in background non-blocking so API response returns instantly in <10ms
+    syncOverdueStatus().catch((err) => console.error('Background syncOverdueStatus error:', err.message));
+    const loans = await Loan.findAll({
+      include: [
+        {
+          model: Member,
+          as: 'member',
+          attributes: ['id', 'fullName', 'village', 'idNumber'],
+        },
+      ],
+      order: [['createdAt', 'DESC']],
+    });
 
     // Flatten for frontend compatibility
     const result = loans.map((l) => ({
@@ -56,7 +118,7 @@ const getLoans = async (req, res, next) => {
       totalRepayable:     parseFloat(l.totalRepayable),
       paidAmount:         parseFloat(l.paidAmount),
       remainingBalance:   parseFloat(l.remainingBalance),
-      status:             loanStatus(l, pastDueIds),
+      status:             l.status,
       grantedAt:          l.createdAt,
     }));
 
@@ -85,55 +147,58 @@ const getStats = async (req, res, next) => {
       return res.json(statsCache);
     }
 
-    const today = todayLocal();
-    const month = monthRange();
-    const select = (sql, replacements) => sequelize.query(sql, { replacements, type: QueryTypes.SELECT });
+    // Fire overdue sync in background non-blocking so stats returns instantly
+    syncOverdueStatus().catch((err) => console.error('Background syncOverdueStatus error:', err.message));
 
-    const [totalMembers, [loanTotals], [due], [collected], recentPayments] = await Promise.all([
+    const [totalMembers, loans] = await Promise.all([
       Member.count(),
-      // Same status rule as getLoans, so the dashboard and the loans list always agree
-      select(`
-        SELECT
-          COALESCE(SUM(l.loanAmount), 0) AS totalAmountLent,
-          COALESCE(SUM(l.paidAmount), 0) AS totalReceivedAmount,
-          COALESCE(SUM(l.remainingBalance > 0 AND od.loanId IS NULL), 0) AS activeLoans,
-          COALESCE(SUM(l.remainingBalance > 0 AND od.loanId IS NOT NULL), 0) AS overdueLoans
-        FROM Loans l
-        LEFT JOIN (SELECT DISTINCT loanId FROM Payments
-                   WHERE status IN ('pending', 'overdue') AND dueDate < :today) od ON od.loanId = l.id
-        WHERE l.deletedAt IS NULL`, { today }),
-      // B14: installments due this month that are still unpaid, whether or not already flagged overdue
-      select(`
-        SELECT COUNT(*) AS pendingPayments
-        FROM Payments p JOIN Loans l ON l.id = p.loanId AND l.deletedAt IS NULL
-        WHERE p.status IN ('pending', 'overdue') AND p.dueDate BETWEEN :firstDay AND :lastDay`,
-      { firstDay: month.firstDay, lastDay: month.lastDay }),
-      // B5: cash actually received this month
-      select(`
-        SELECT COALESCE(SUM(p.amountPaid), 0) AS collectedThisMonth
-        FROM Payments p JOIN Loans l ON l.id = p.loanId AND l.deletedAt IS NULL
-        WHERE ${CASH_RECEIPTS} AND p.paidAt >= :start AND p.paidAt < :end`,
-      { start: month.start, end: month.end }),
-      Payment.findAll({
-        where: { status: 'paid', isAutoPaid: { [Op.not]: true } }, // NULL on rows older than the column
-        order: [['paidAt', 'DESC']],
-        limit: 5,
-        include: [
-          {
-            model: Loan,
-            as: 'loan',
-            required: true, // skips deleted loans
-            include: [
-              {
-                model: Member,
-                as: 'member',
-                attributes: ['id', 'fullName'],
-              },
-            ],
-          },
-        ],
-      }),
+      Loan.findAll(),
     ]);
+
+    const activeLoans         = loans.filter(l => l.status === 'active').length;
+    const overdueLoans        = loans.filter(l => l.status === 'overdue').length;
+    const totalAmountLent     = loans.reduce((s, l) => s + parseFloat(l.loanAmount || 0), 0);
+    const totalReceivedAmount = loans.reduce((s, l) => s + parseFloat(l.paidAmount || 0), 0);
+
+    // Pending payments this month
+    const now          = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const pendingPayments = await Payment.count({
+      where: {
+        status:  'pending',
+        dueDate: { [Op.between]: [startOfMonth, endOfMonth] },
+      },
+    });
+
+    const collectedSum = await Payment.sum('amountPaid', {
+      where: {
+        status: 'paid',
+        paidAt: { [Op.between]: [startOfMonth, endOfMonth] },
+      },
+    });
+    const collectedThisMonth = collectedSum || 0;
+
+    // Recent activity — last 5 paid payments
+    const recentPayments = await Payment.findAll({
+      where: { status: 'paid' },
+      order: [['paidAt', 'DESC']],
+      limit: 5,
+      include: [
+        {
+          model: Loan,
+          as: 'loan',
+          include: [
+            {
+              model: Member,
+              as: 'member',
+              attributes: ['id', 'fullName'],
+            },
+          ],
+        },
+      ],
+    });
 
     const recentActivity = recentPayments.map((p) => ({
       id:     p.id,
@@ -145,16 +210,15 @@ const getStats = async (req, res, next) => {
       note:   `Week ${p.monthNumber} payment`,
     }));
 
-    const totalReceivedAmount = Number(loanTotals.totalReceivedAmount);
     const responseData = {
       totalMembers,
-      activeLoans:         Number(loanTotals.activeLoans),
-      overdueLoans:        Number(loanTotals.overdueLoans),
-      totalAmountLent:     Number(loanTotals.totalAmountLent),
+      activeLoans,
+      overdueLoans,
+      totalAmountLent,
       totalReceivedAmount,
       totalAmountReceived: totalReceivedAmount,
-      pendingPayments:     Number(due.pendingPayments),
-      collectedThisMonth:  Number(collected.collectedThisMonth),
+      pendingPayments,
+      collectedThisMonth,
       recentActivity,
     };
 
@@ -168,68 +232,63 @@ const getStats = async (req, res, next) => {
   }
 };
 
-// @desc    Cash collected per week (Monday to Sunday, local time) for the dashboard chart (B15)
-// @route   GET /api/loans/collections?weeks=8
-// @access  Private
-const getCollections = async (req, res, next) => {
-  try {
-    const { weeks } = req.valid.query;
-    const thisWeek  = startOfWeek(todayLocal());
-    const firstWeek = addDays(thisWeek, -7 * (weeks - 1));
-
-    const receipts = await sequelize.query(`
-      SELECT p.paidAt, p.amountPaid
-      FROM Payments p JOIN Loans l ON l.id = p.loanId AND l.deletedAt IS NULL
-      WHERE ${CASH_RECEIPTS} AND p.paidAt >= :from`,
-    { replacements: { from: localMidnight(firstWeek) }, type: QueryTypes.SELECT });
-
-    const buckets = Array.from({ length: weeks }, (_, i) => ({ weekStart: addDays(firstWeek, 7 * i), cents: 0 }));
-    const byWeek = new Map(buckets.map((b) => [b.weekStart, b]));
-    for (const r of receipts) {
-      const bucket = byWeek.get(startOfWeek(toLocalDateString(new Date(r.paidAt))));
-      if (bucket) bucket.cents += toCents(r.amountPaid);
-    }
-
-    res.json(buckets.map((b) => ({ weekStart: b.weekStart, amount: b.cents / 100 })));
-  } catch (err) {
-    next(err);
-  }
-};
-
 // @desc    Grant a loan (auto-generates payment schedule)
 // @route   POST /api/loans
 // @access  Private
 const createLoan = async (req, res, next) => {
   try {
-    const { memberId, loanAmount, interestRate, loanDuration, startDate } = req.valid.body;
+    const { memberId, loanAmount, interestRate, loanDuration, startDate } = req.body;
 
-    const member = await Member.findByPk(memberId);
+    const parsedMemberId = parseInt(memberId, 10);
+    if (!memberId || isNaN(parsedMemberId)) {
+      return res.status(400).json({ message: 'A valid member ID is required' });
+    }
+
+    const member = await Member.findByPk(parsedMemberId);
     if (!member) return res.status(404).json({ message: 'Member not found' });
 
-    const totalRepayable     = Math.round(loanAmount * (1 + interestRate / 100));
-    const monthlyInstallment = Math.round(totalRepayable / loanDuration); // typical week, for display
-    if (totalRepayable < loanDuration) {
-      return res.status(400).json({ message: 'The loan amount is too small to repay over that many weeks' });
+    const amount   = parseFloat(loanAmount);
+    const rate     = interestRate !== undefined && interestRate !== '' ? parseFloat(interestRate) : 30;
+    const duration = parseInt(loanDuration, 10);
+
+    if (isNaN(amount) || amount <= 0) {
+      return res.status(400).json({ message: 'Loan amount must be a positive number' });
     }
+
+    if (isNaN(rate) || rate < 0 || rate > 100) {
+      return res.status(400).json({ message: 'Interest rate must be between 0% and 100%' });
+    }
+
+    if (isNaN(duration) || duration < 1 || duration > 520) {
+      return res.status(400).json({ message: 'Loan duration must be between 1 and 520 weeks' });
+    }
+
+    const parsedStartDate = new Date(startDate);
+    if (isNaN(parsedStartDate.getTime())) {
+      return res.status(400).json({ message: 'A valid start date is required' });
+    }
+
+    const totalRepayable     = Math.round(amount * (1 + rate / 100));
+    const monthlyInstallment = Math.round(totalRepayable / duration);
 
     if (req.inFlight) req.inFlight.stage = 'loan-transaction';
     const loan = await sequelize.transaction(async (t) => {
       const createdLoan = await Loan.create({
-        memberId,
-        loanAmount,
-        interestRate,
-        loanDuration,
-        startDate,
+        memberId:           parsedMemberId,
+        loanAmount:         amount,
+        interestRate:       rate,
+        loanDuration:       duration,
+        startDate:          parsedStartDate,
         monthlyInstallment,
         totalRepayable,
         paidAmount:         0,
         remainingBalance:   totalRepayable,
         status:             'active',
-        createdBy:          req.user.id,
+        createdBy:          req.user.id || req.user._id,
       }, { transaction: t });
 
-      // B10: installments split exactly so the schedule adds up to totalRepayable
-      const schedule = buildSchedule({ loanId: createdLoan.id, startDate, totalRepayable, weeks: loanDuration });
+      // Auto-generate weekly payment schedule
+      const schedule = generateSchedule(createdLoan.id, parsedStartDate, monthlyInstallment, duration);
       await Payment.bulkCreate(schedule, { transaction: t });
 
       return createdLoan;
@@ -247,30 +306,32 @@ const createLoan = async (req, res, next) => {
   }
 };
 
-// @desc    Delete a loan. Soft delete: the loan disappears from lists and totals, but the row and its
-//          payment history are kept for audit (7-year retention) with who deleted it and why.
-// @route   DELETE /api/loans/:id?reason=...
-//          (The reason is a query parameter: some WAF configs drop DELETE requests with a body.)
-// @access  Private (admin)
+// @desc    Delete a loan and its payment schedule
+// @route   DELETE /api/loans/:id
+// @access  Private
 const deleteLoan = async (req, res, next) => {
   try {
-    const { id } = req.valid.params;
-    const { reason } = req.valid.query;
+    const loanId = parseInt(req.params.id, 10);
+    if (isNaN(loanId)) {
+      return res.status(400).json({ message: 'Invalid loan ID format' });
+    }
+
+    const loan = await Loan.findByPk(loanId);
+    if (!loan) return res.status(404).json({ message: 'Loan not found' });
 
     await sequelize.transaction(async (t) => {
-      const loan = await Loan.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
-      if (!loan) throw httpError(404, 'Loan not found');
-      await loan.update({ deletedBy: req.user.id, deleteReason: reason }, { transaction: t });
+      await Payment.destroy({ where: { loanId: loan.id }, transaction: t });
       await loan.destroy({ transaction: t });
     });
 
-    console.info(`[audit] loan deleted: loan=${id} by=${req.user.id} reason=${JSON.stringify(reason)}`);
     invalidateStatsCache();
 
-    res.json({ message: 'Loan deleted. Its payment history is kept for audit.' });
+    res.json({ message: 'Loan and payment schedule deleted successfully' });
   } catch (err) {
     next(err);
   }
 };
 
-module.exports = { getLoans, getStats, getCollections, createLoan, deleteLoan, invalidateStatsCache };
+module.exports = { getLoans, getStats, createLoan, deleteLoan, invalidateStatsCache };
+
+

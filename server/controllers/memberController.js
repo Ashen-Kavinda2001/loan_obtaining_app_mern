@@ -1,8 +1,4 @@
-const { Op } = require('sequelize');
 const { Member, Group, Loan } = require('../models');
-
-// A groupId from the client must point at a real group (null = ungrouped)
-const groupExists = async (groupId) => groupId == null || Boolean(await Group.findByPk(groupId, { attributes: ['id'] }));
 
 // @desc    Get all members (optional ?groupId=xxx or ?ungrouped=true)
 // @route   GET /api/members
@@ -37,19 +33,25 @@ const getMembers = async (req, res, next) => {
 // @access  Private
 const createMember = async (req, res, next) => {
   try {
-    const data = req.valid.body; // validated + normalized by validators/schemas.memberCreate
+    const { fullName, idNumber, village, contactNumber, age, groupId } = req.body;
 
-    const existing = await Member.findOne({ where: { idNumber: data.idNumber } });
+    const cleanNIC = idNumber ? String(idNumber).trim() : '';
+    if (!cleanNIC) {
+      return res.status(400).json({ message: 'NIC number is required' });
+    }
+
+    const existing = await Member.findOne({ where: { idNumber: cleanNIC } });
     if (existing)
       return res.status(400).json({ message: 'A member with this NIC already exists' });
 
-    const groupId = data.groupId ?? null;
-    if (!(await groupExists(groupId))) return res.status(400).json({ message: 'Selected group does not exist' });
-
     const member = await Member.create({
-      ...data,
-      groupId,
-      createdBy: req.user.id,
+      fullName:      fullName ? String(fullName).trim() : '',
+      idNumber:      cleanNIC,
+      village:       village ? String(village).trim() : '',
+      contactNumber: contactNumber ? String(contactNumber).trim() : '',
+      age:           age ? parseInt(age, 10) : null,
+      groupId:       groupId ? parseInt(groupId, 10) : null,
+      createdBy:     req.user.id || req.user._id,
     });
 
     const populated = await Member.findByPk(member.id, {
@@ -61,27 +63,36 @@ const createMember = async (req, res, next) => {
   }
 };
 
-// @desc    Update a member. Only the fields sent are changed (B16).
+// @desc    Update a member
 // @route   PUT /api/members/:id
 // @access  Private
 const updateMember = async (req, res, next) => {
   try {
-    const { id } = req.valid.params;
-    const changes = req.valid.body; // validated + normalized by validators/schemas.memberUpdate
+    const memberId = parseInt(req.params.id, 10);
+    if (isNaN(memberId)) {
+      return res.status(400).json({ message: 'Invalid member ID format' });
+    }
 
-    const member = await Member.findByPk(id);
+    const { fullName, idNumber, village, contactNumber, age, groupId } = req.body;
+
+    const member = await Member.findByPk(memberId);
     if (!member) return res.status(404).json({ message: 'Member not found' });
 
-    if (changes.idNumber && changes.idNumber !== member.idNumber) {
-      const dup = await Member.findOne({ where: { idNumber: changes.idNumber, id: { [Op.ne]: member.id } } });
+    if (idNumber && idNumber !== member.idNumber) {
+      const dup = await Member.findOne({ where: { idNumber } });
       if (dup) return res.status(400).json({ message: 'NIC already in use by another member' });
     }
 
-    if (changes.groupId !== undefined && !(await groupExists(changes.groupId))) {
-      return res.status(400).json({ message: 'Selected group does not exist' });
-    }
+    Object.assign(member, {
+      fullName,
+      idNumber,
+      village,
+      contactNumber,
+      age: age !== undefined ? (age ? parseInt(age, 10) : null) : member.age,
+      groupId: groupId !== undefined ? (groupId ? parseInt(groupId, 10) : null) : member.groupId,
+    });
 
-    await member.update(changes);
+    await member.save();
     const populated = await Member.findByPk(member.id, {
       include: [{ model: Group, as: 'groupDetails', attributes: ['id', 'name'] }],
     });
@@ -96,16 +107,19 @@ const updateMember = async (req, res, next) => {
 // @access  Private
 const deleteMember = async (req, res, next) => {
   try {
-    const { id } = req.valid.params;
+    const memberId = parseInt(req.params.id, 10);
+    if (isNaN(memberId)) {
+      return res.status(400).json({ message: 'Invalid member ID format' });
+    }
 
-    const member = await Member.findByPk(id);
+    const member = await Member.findByPk(memberId);
     if (!member) return res.status(404).json({ message: 'Member not found' });
 
-    // Guard: deleted (archived) loans count too; their history must keep pointing at this member
-    const existingLoan = await Loan.findOne({ where: { memberId: member.id }, paranoid: false });
+    // Guard: check if member has associated loans
+    const existingLoan = await Loan.findOne({ where: { memberId: member.id } });
     if (existingLoan) {
       return res.status(400).json({
-        message: 'Cannot delete a member who has loan records, including deleted loans kept for audit.',
+        message: 'Cannot delete member with active or historical loan records. Please remove or archive loans first.',
       });
     }
 
@@ -117,3 +131,4 @@ const deleteMember = async (req, res, next) => {
 };
 
 module.exports = { getMembers, createMember, updateMember, deleteMember };
+

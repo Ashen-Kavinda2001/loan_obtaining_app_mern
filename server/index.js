@@ -5,7 +5,6 @@ if (dns.setDefaultResultOrder) {
 }
 
 require('dotenv').config();
-require('./config/timezone'); // before anything creates a Date — see the file for why
 
 // ── Cryptographic Pre-flight Checks ──────────────────────
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
@@ -24,22 +23,10 @@ const { connectDB, getPoolStats } = require('./config/db');
 require('./models'); // Loads models and associations
 const initializeApp = require('./init');
 const { protect, authorize } = require('./middleware/auth');
-const { ensureSchema } = require('./db/schema');
-const { syncOverdueStatus } = require('./services/overdueService');
 
-// Connect to MySQL, add any missing columns, then run first-time admin setup and the overdue sync.
-// ensureSchema never rejects (it logs failures), so schemaReady always settles.
-const schemaReady = connectDB().then(() => ensureSchema());
-schemaReady
-  .then(() => initializeApp())
-  .then(() => syncOverdueStatus())
-  .then((r) => console.log(`✅ Overdue sync (${r.today}): ${r.installmentsFlagged} installments, ${r.loansFlagged} loans flagged`))
-  .catch((err) => console.error('❌ Startup overdue sync failed:', err.message));
-
-// Requests that touch the database wait until new columns exist (normally well under a second)
-const waitForSchema = (req, res, next) => {
-  schemaReady.then(() => next(), next);
-};
+// Connect to MySQL, then run first-time admin setup if needed
+connectDB()
+  .then(() => initializeApp());
 
 const app = express();
 
@@ -153,7 +140,6 @@ app.use((req, res, next) => {
 
 // ── Routes ────────────────────────────────────────────────
 const apiRouter = express.Router();
-apiRouter.use(['/auth', '/members', '/groups', '/loans', '/payments'], waitForSchema);
 apiRouter.use('/auth',     require('./routes/auth'));
 apiRouter.use('/members',  require('./routes/members'));
 apiRouter.use('/groups',   require('./routes/groups'));
