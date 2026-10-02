@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { Member, Group, Loan } = require('../models');
+const { pagingFrom, pageResult, likePattern } = require('../utils/paging');
 
 // A groupId from the client must point at a real group (null = ungrouped)
 const groupExists = async (groupId) => groupId == null || Boolean(await Group.findByPk(groupId, { attributes: ['id'] }));
@@ -21,12 +22,23 @@ const getMembers = async (req, res, next) => {
       filter.groupId = null;
     }
 
-    const members = await Member.findAll({
+    // ?q= searches name, NIC, village and phone; ?page=&limit= return one page (see utils/paging)
+    const { q } = req.valid.query;
+    if (q) {
+      const like = { [Op.like]: likePattern(q) };
+      filter[Op.or] = [{ fullName: like }, { idNumber: like }, { village: like }, { contactNumber: like }];
+    }
+    const query = {
       where: filter,
       include: [{ model: Group, as: 'groupDetails', attributes: ['id', 'name'] }],
-      order: [['createdAt', 'DESC']],
-    });
-    res.json(members);
+      order: [['createdAt', 'DESC'], ['id', 'DESC']],
+    };
+
+    const paging = pagingFrom(req.valid.query);
+    if (!paging) return res.json(await Member.findAll(query));
+
+    const { rows, count } = await Member.findAndCountAll({ ...query, distinct: true, limit: paging.limit, offset: paging.offset });
+    res.json(pageResult(rows, count, paging));
   } catch (err) {
     next(err);
   }

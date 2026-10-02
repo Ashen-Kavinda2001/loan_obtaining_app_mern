@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search, Edit2, Trash2, UserPlus, Users, ChevronRight,
   ArrowLeft, Pencil, X, Check, FolderOpen
@@ -7,6 +7,9 @@ import { Link } from 'react-router-dom';
 import client from '../api/client';
 import { useIsAdmin } from '../auth';
 import { useEscapeKey } from '../components/useEscapeKey';
+import Pagination from '../components/Pagination';
+
+const PAGE_SIZE = 25; // members per page
 
 const GROUP_GRADIENTS = [
   'linear-gradient(135deg,#4F46E5,#818CF8)',
@@ -39,7 +42,8 @@ export default function MemberList() {
   const [groups, setGroups]         = useState([]);
   const [ungroupedCount, setUngroupedCount] = useState(0);
   const [selectedGroup, setSelectedGroup]   = useState(null); // null | group | 'ungrouped'
-  const [members, setMembers]   = useState([]);   // members in current context
+  const [members, setMembers]   = useState([]);   // one page of members in the current context
+  const [paging, setPaging]     = useState({ page: 1, pages: 1, total: 0 });
   const [loading, setLoading]   = useState(false); // only the member tables use it
 
   // ── Modal state ─────────────────────────────────────────────
@@ -60,40 +64,62 @@ export default function MemberList() {
       })
       .catch(() => { /* silent */ }), []);
 
-  // ── Fetch members (all, by group, or ungrouped) ─────────────
-  const fetchMembers = useCallback(async (context) => {
+  // ── Fetch one page of members (all, by group, or ungrouped); the server searches ──
+  const requestSeq = useRef(0);
+  const fetchMembers = useCallback((context, { page = 1, q = '' } = {}) => {
+    const seq = ++requestSeq.current;
     setLoading(true);
-    try {
-      let url = '/members';
-      if (context && context !== 'ungrouped') url += `?groupId=${context.id || context._id}`;
-      else if (context === 'ungrouped')        url += '?ungrouped=true';
-      const { data } = await client.get(url);
-      setMembers(Array.isArray(data) ? data : []);
-    } catch { setMembers([]); }
-    finally { setLoading(false); }
+    const params = { page, limit: PAGE_SIZE, q: q || undefined };
+    if (context && context !== 'ungrouped') params.groupId = context.id || context._id;
+    else if (context === 'ungrouped')        params.ungrouped = 'true';
+    return client.get('/members', { params })
+      .then(({ data }) => {
+        if (seq !== requestSeq.current) return; // an older request answered late; ignore it
+        setMembers(data.items);
+        setPaging({ page: data.page, pages: data.pages, total: data.total });
+      })
+      .catch(() => {
+        if (seq !== requestSeq.current) return;
+        setMembers([]);
+        setPaging({ page: 1, pages: 1, total: 0 });
+      })
+      .finally(() => { if (seq === requestSeq.current) setLoading(false); });
   }, []);
 
   useEffect(() => {
     fetchGroups();
   }, [fetchGroups]);
 
-  // Switching to member search mode fetches all members
+  // Member lists (search mode, or inside a group) load when opened and when typing pauses
+  const showsMembers = selectedGroup !== null || searchMode === 'member';
+  useEffect(() => {
+    if (!showsMembers) return;
+    const t = setTimeout(() => fetchMembers(selectedGroup, { q: query.trim() }), query ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [showsMembers, selectedGroup, query, fetchMembers]);
+
+  const startMemberList = () => { setMembers([]); setLoading(true); setPaging({ page: 1, pages: 1, total: 0 }); };
+  const changePage = (page) => {
+    fetchMembers(selectedGroup, { page, q: query.trim() });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const changeSearchMode = (mode) => {
+    if (mode === 'member' && searchMode !== 'member') startMemberList();
     setSearchMode(mode);
     setQuery('');
-    if (mode === 'member' && searchMode !== 'member') fetchMembers(null);
   };
 
   // Drill into a group
   const enterGroup = (group) => {
+    startMemberList();
     setSelectedGroup(group);
     setQuery('');
-    fetchMembers(group);
   };
   const enterUngrouped = () => {
+    startMemberList();
     setSelectedGroup('ungrouped');
     setQuery('');
-    fetchMembers('ungrouped');
   };
   const goBack = () => {
     setSelectedGroup(null);
@@ -128,9 +154,9 @@ export default function MemberList() {
     e.preventDefault();
     setSaving(true);
     try {
-      const { data } = await client.put(`/members/${editMember._id}`, editMember);
-      setMembers(prev => prev.map(m => m._id === data._id ? data : m));
+      await client.put(`/members/${editMember._id}`, editMember);
       setEditMember(null);
+      fetchMembers(selectedGroup, { page: paging.page, q: query.trim() }); // the edit may move it in the list
       fetchGroups(); // refresh counts
     } catch (err) { alert(err.response?.data?.message || 'Failed to update'); }
     finally { setSaving(false); }
@@ -139,8 +165,10 @@ export default function MemberList() {
   const handleDeleteMember = async () => {
     try {
       await client.delete(`/members/${deleteId}`);
-      setMembers(prev => prev.filter(m => m._id !== deleteId));
       setDeleteId(null);
+      // Reload the page; if that was its last member, go back one page
+      const page = members.length === 1 && paging.page > 1 ? paging.page - 1 : paging.page;
+      fetchMembers(selectedGroup, { page, q: query.trim() });
       fetchGroups();
     } catch (err) { alert(err.response?.data?.message || 'Failed to delete member'); }
   };
@@ -148,10 +176,6 @@ export default function MemberList() {
   // ── Derived lists ────────────────────────────────────────────
   const filteredGroups = (Array.isArray(groups) ? groups : []).filter(g =>
     g.name?.toLowerCase().includes(query.toLowerCase())
-  );
-  const filteredMembers = (Array.isArray(members) ? members : []).filter(m =>
-    m.fullName?.toLowerCase().includes(query.toLowerCase()) ||
-    m.idNumber?.includes(query)
   );
 
   // ─────────────────────────────────────────────────────────────
@@ -182,7 +206,7 @@ export default function MemberList() {
         </div>
         <div className="page-subtitle" style={{ marginBottom: 14 }}>
           {selectedGroup
-            ? `${filteredMembers.length} member${filteredMembers.length !== 1 ? 's' : ''}`
+            ? `${paging.total} member${paging.total !== 1 ? 's' : ''}`
             : `${groups.length} group${groups.length !== 1 ? 's' : ''} · ${groups.reduce((s, g) => s + g.memberCount, 0) + ungroupedCount} total members`}
         </div>
 
@@ -213,7 +237,7 @@ export default function MemberList() {
             <div className="search-wrapper" style={{ flex: '1 1 180px', minWidth: 0 }}>
               <Search size={15} />
               <input className="form-control" style={{ paddingLeft: 38, width: '100%' }}
-                placeholder={searchMode === 'group' ? 'Search groups…' : 'Search by name or NIC…'}
+                placeholder={searchMode === 'group' ? 'Search groups…' : 'Search by name, NIC, village or phone…'}
                 value={query} onChange={e => setQuery(e.target.value)} />
             </div>
 
@@ -229,7 +253,7 @@ export default function MemberList() {
             <div className="search-wrapper" style={{ flex: 1 }}>
               <Search size={15} />
               <input className="form-control" style={{ paddingLeft: 38, width: '100%' }}
-                placeholder="Search by name or NIC…"
+                placeholder="Search by name, NIC, village or phone…"
                 value={query} onChange={e => setQuery(e.target.value)} />
             </div>
             <Link to="/register" className="btn btn-primary" style={{ flexShrink: 0 }}>
@@ -305,7 +329,8 @@ export default function MemberList() {
       ══════════════════════════════════════════════════ */}
       {!selectedGroup && searchMode === 'member' && (
         <MembersTable
-          members={filteredMembers}
+          members={members}
+          offset={(paging.page - 1) * PAGE_SIZE}
           query={query}
           loading={loading}
           showGroup
@@ -319,13 +344,19 @@ export default function MemberList() {
       ══════════════════════════════════════════════════ */}
       {selectedGroup && (
         <MembersTable
-          members={filteredMembers}
+          members={members}
+          offset={(paging.page - 1) * PAGE_SIZE}
           query={query}
           loading={loading}
           showGroup={false}
           onEdit={isAdmin ? m => setEditMember({ ...m, groupId: m.groupId?._id || '' }) : null}
           onDelete={isAdmin ? id => setDeleteId(id) : null}
         />
+      )}
+
+      {showsMembers && !loading && (
+        <Pagination page={paging.page} pages={paging.pages} total={paging.total}
+          noun={paging.total === 1 ? 'member' : 'members'} onChange={changePage} />
       )}
 
       {/* ══════════════════════════════════════════════════
@@ -495,7 +526,7 @@ function MemberActions({ m, onEdit, onDelete }) {
   );
 }
 
-function MembersTable({ members, query, loading, showGroup, onEdit, onDelete }) {
+function MembersTable({ members, offset = 0, query, loading, showGroup, onEdit, onDelete }) {
   if (loading) return (
     <div style={{ textAlign: 'center', padding: 60, color: 'var(--color-text-muted)' }}>Loading members…</div>
   );
@@ -525,7 +556,7 @@ function MembersTable({ members, query, loading, showGroup, onEdit, onDelete }) 
               </td></tr>
             ) : members.map((m, i) => (
               <tr key={m._id}>
-                <td style={{ color: 'var(--color-text-muted)' }}>{i + 1}</td>
+                <td style={{ color: 'var(--color-text-muted)' }}>{offset + i + 1}</td>
                 <td>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(135deg,#4F46E5,#818CF8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 700 }}>

@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { ChevronDown, ChevronUp, CheckCircle, RotateCcw, Search, CreditCard, Trash2, AlertTriangle, X } from 'lucide-react';
 import client from '../api/client';
 import { formatCurrency } from '../data/demoData';
 import { useIsAdmin } from '../auth';
 import { useEscapeKey } from '../components/useEscapeKey';
+import Pagination from '../components/Pagination';
 
 // One key per payment attempt; the server returns the original result if it sees the same key again
 const newIdempotencyKey = () =>
@@ -137,13 +138,16 @@ function ErrorSnack({ message, onClose }) {
 
 const TABS = ['all', 'active', 'completed', 'overdue'];
 
+const PAGE_SIZE = 20; // members per page
+
 export default function LoanDetails() {
-  const [loans, setLoans]         = useState([]);
   const [payments, setPayments]   = useState({});
   const [activeTab, setActiveTab] = useState('all');
   const [expanded, setExpanded]   = useState(null);   // loanId of expanded row
-  const [search, setSearch]       = useState('');
-  const [loading, setLoading]     = useState(true);
+  const [search, setSearch]       = useState('');     // what is typed
+  const [query, setQuery]         = useState('');     // what is searched (typing settles for 300 ms)
+  const [page, setPage]           = useState(1);
+  const [list, setList]           = useState(null);   // last server answer: { key, items, total, pages, counts, error }
   const [loadingPayments, setLoadingPayments] = useState({});
   const [amountInputs, setAmountInputs] = useState({});
 
@@ -154,13 +158,48 @@ export default function LoanDetails() {
   // paymentId → { key, amount } kept when a request got no response, so trying again reuses the key
   const pendingKeys = useRef({});
 
-  // ── Fetch all loans ──────────────────────────────────────
+  // ── Fetch one page of loans (search, tab and page are done by the server) ──
+  const params = useMemo(() => ({
+    page, limit: PAGE_SIZE, status: activeTab, q: query || undefined,
+  }), [page, activeTab, query]);
+  const paramsKey = JSON.stringify(params);
+  const latestKey = useRef(paramsKey);
+
+  // `quiet`: a refresh after a payment; if it fails, keep showing the list instead of an error
+  const loadLoans = useCallback(({ quiet = false } = {}) => {
+    const key = JSON.stringify(params);
+    return client.get('/loans', { params })
+      .then(({ data }) => {
+        if (key !== latestKey.current) return; // an older request answered late; ignore it
+        if (data.items.length === 0 && data.page > data.pages) { setPage(data.pages); return; } // page emptied by a delete
+        setList({ key, items: data.items, total: data.total, pages: data.pages, counts: data.counts });
+      })
+      .catch(() => {
+        if (quiet || key !== latestKey.current) return;
+        setList(prev => ({ ...(prev || { items: [], total: 0, pages: 1, counts: null }), key, error: true }));
+      });
+  }, [params]);
+
   useEffect(() => {
-    client.get('/loans')
-      .then(({ data }) => setLoans(Array.isArray(data) ? data : []))
-      .catch(() => console.error('Failed to load loans'))
-      .finally(() => setLoading(false));
-  }, []);
+    latestKey.current = paramsKey;
+    loadLoans();
+  }, [paramsKey, loadLoans]);
+
+  // Search after typing pauses, from page 1
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setQuery(search.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const changeTab = (tab) => { setActiveTab(tab); setPage(1); };
+  const changePage = (p) => { setPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+
+  const loans     = list?.items || [];
+  const loading   = !list || list.key !== paramsKey; // waiting for the current page
+  const loadError = list?.error && !loading;
 
   // ── Fetch payments when a loan row is expanded ───────────
   const loadPayments = async (loanId) => {
@@ -182,13 +221,12 @@ export default function LoanDetails() {
     loadPayments(loanId);
   };
 
-  // Re-fetch both loans list and payment rows after any mutation
+  // Re-fetch the current page and the loan's payment rows after any change
   const refresh = async (loanId) => {
-    const [{ data: updatedLoans }, { data: updatedPayments }] = await Promise.all([
-      client.get('/loans'),
+    const [, { data: updatedPayments }] = await Promise.all([
+      loadLoans({ quiet: true }),
       client.get(`/payments?loanId=${loanId}`),
     ]);
-    setLoans(updatedLoans);
     setPayments(prev => ({ ...prev, [loanId]: updatedPayments }));
   };
 
@@ -274,9 +312,9 @@ export default function LoanDetails() {
         setConfirm(null);
         try {
           await client.delete(`/loans/${loanId}`, { params: { reason } });
-          setLoans(prev => prev.filter(l => l._id !== loanId));
           setPayments(prev => { const n = { ...prev }; delete n[loanId]; return n; });
           if (expanded === loanId) setExpanded(null);
+          loadLoans({ quiet: true }); // the page and the tab counts change
         } catch (err) {
           setErrMsg(err.response?.data?.message || 'Failed to delete loan.');
         }
@@ -284,20 +322,13 @@ export default function LoanDetails() {
     });
   };
 
-  // ── Filter loans by tab + search ──────────────────────────
-  const filtered = loans.filter(l => {
-    const matchTab    = activeTab === 'all' || l.status === activeTab;
-    const matchSearch = l.memberName.toLowerCase().includes(search.toLowerCase());
-    return matchTab && matchSearch;
-  });
+  // Tab badges count loans matching the search (from the server; blank until the first answer)
+  const tabCount = (tab) => list?.counts?.[tab] ?? '';
 
-  const tabCount = (tab) =>
-    tab === 'all' ? loans.length : loans.filter(l => l.status === tab).length;
-
-  // ── Group filtered loans by memberId ──────────────────────
+  // ── Group the page's loans by memberId (the server pages by member, so none are split) ──
   // Result: [{ memberId, memberName, memberVillage, loans: [...] }, ...]
   const grouped = Object.values(
-    filtered.reduce((acc, loan) => {
+    loans.reduce((acc, loan) => {
       const key = loan.memberId || loan.memberName; // fallback to name if no id
       if (!acc[key]) {
         acc[key] = {
@@ -312,7 +343,7 @@ export default function LoanDetails() {
     }, {})
   );
 
-  if (loading) return (
+  if (!list) return (
     <div className="page-content">
       <div style={{ textAlign: 'center', padding: 60, color: 'var(--color-text-muted)' }}>Loading loans…</div>
     </div>
@@ -343,7 +374,7 @@ export default function LoanDetails() {
           <button
             key={tab}
             className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => changeTab(tab)}
           >
             {tab.charAt(0).toUpperCase() + tab.slice(1)}
             <span style={{
@@ -363,22 +394,31 @@ export default function LoanDetails() {
           <input
             className="form-control search-input"
             style={{ width: '100%' }}
-            placeholder="Search by member name…"
+            placeholder="Search by member name, NIC or village…"
+            aria-label="Search loans"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
         </div>
       </div>
 
-      {/* ── Member groups ── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {grouped.length === 0 && (
+      {/* ── Member groups (dimmed while the next page loads) ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, opacity: loading ? 0.55 : 1, transition: 'opacity 0.15s' }} aria-busy={loading}>
+        {loadError && (
           <div className="card">
-            <div className="empty-state"><p>No loans found.</p></div>
+            <div className="empty-state">
+              <p>Could not load the loans. Check the connection.</p>
+              <button className="btn btn-outline btn-sm" onClick={() => loadLoans()}>Try again</button>
+            </div>
+          </div>
+        )}
+        {!loadError && !loading && grouped.length === 0 && (
+          <div className="card">
+            <div className="empty-state"><p>{query ? `No loans found for "${query}".` : 'No loans found.'}</p></div>
           </div>
         )}
 
-        {grouped.map(group => (
+        {!loadError && grouped.map(group => (
           <MemberLoanGroup
             key={group.memberId}
             group={group}
@@ -397,6 +437,9 @@ export default function LoanDetails() {
           />
         ))}
       </div>
+
+      <Pagination page={page} pages={list.pages} total={list.total} noun={list.total === 1 ? 'member' : 'members'}
+        loading={loading} onChange={changePage} />
     </div>
   );
 }
