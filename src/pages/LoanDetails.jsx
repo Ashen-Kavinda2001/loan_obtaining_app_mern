@@ -5,6 +5,7 @@ import { formatCurrency } from '../data/demoData';
 import { useIsAdmin } from '../auth';
 import { useEscapeKey } from '../components/useEscapeKey';
 import Pagination from '../components/Pagination';
+import SmsReceipts from '../components/SmsReceipts';
 
 // One key per payment attempt; the server returns the original result if it sees the same key again
 const newIdempotencyKey = () =>
@@ -913,6 +914,12 @@ function PaymentSchedule({ loan, loanPayments, loadingPayments, amountInputs, pa
               );
             })}
           </div>
+
+          <SmsReceipts
+            loanId={loan._id}
+            refreshKey={loanPayments}
+            weekOf={paymentId => loanPayments.find(p => p._id === paymentId)?.monthNumber}
+          />
         </>
       )}
     </div>

@@ -148,6 +148,7 @@ apiRouter.use('/members',  require('./routes/members'));
 apiRouter.use('/groups',   require('./routes/groups'));
 apiRouter.use('/loans',    require('./routes/loans'));
 apiRouter.use('/payments', require('./routes/payments'));
+apiRouter.use('/sms-logs', require('./routes/smsLogs'));
 // DB-free health check — answers instantly even when DB pool is saturated
 apiRouter.get('/health', (req, res) => res.json({ status: 'ok' }));
 // Ping — even lighter than health, used for A/B diagnosis: does it respond while a DB route stalls?
