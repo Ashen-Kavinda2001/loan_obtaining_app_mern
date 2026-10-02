@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+/* The Inter font is loaded by <link> tags in index.html (a CSS @import here blocked the first paint) */
 
 /* ============================================
    CSS VARIABLES — Design Tokens

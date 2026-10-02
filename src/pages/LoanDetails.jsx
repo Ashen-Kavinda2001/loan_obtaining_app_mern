@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, ChevronUp, CheckCircle, RotateCcw, Search, CreditCard, Trash2, AlertTriangle, X } from 'lucide-react';
 import client from '../api/client';
 import { formatCurrency } from '../data/demoData';
+import { useIsAdmin } from '../auth';
+import { useEscapeKey } from '../components/useEscapeKey';
 
 // One key per payment attempt; the server returns the original result if it sees the same key again
 const newIdempotencyKey = () =>
@@ -34,6 +36,7 @@ function describeOverpayment(rows, target, amount) {
 function ConfirmModal({ title, message, confirmLabel = 'Confirm', danger = false, prompt = null, onConfirm, onCancel }) {
   const [value, setValue] = useState('');
   const canConfirm = !prompt || value.trim().length >= (prompt.minLength || 1);
+  useEscapeKey(onCancel); // Escape = Cancel
   return (
     <div style={{
       position: 'fixed', inset: 0,
@@ -41,7 +44,7 @@ function ConfirmModal({ title, message, confirmLabel = 'Confirm', danger = false
       zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: 16, animation: 'fadeIn 0.15s ease',
     }}>
-      <div style={{
+      <div role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message" style={{
         background: '#fff', borderRadius: 16, padding: '28px 28px 24px',
         width: '100%', maxWidth: 420,
         boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
@@ -57,8 +60,8 @@ function ConfirmModal({ title, message, confirmLabel = 'Confirm', danger = false
             <AlertTriangle size={20} color={danger ? '#DC2626' : '#D97706'} />
           </div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 15, color: '#0F172A', marginBottom: 4 }}>{title}</div>
-            <div style={{ fontSize: 13, color: '#64748B', lineHeight: 1.5 }}>{message}</div>
+            <div id="confirm-title" style={{ fontWeight: 700, fontSize: 15, color: '#0F172A', marginBottom: 4 }}>{title}</div>
+            <div id="confirm-message" style={{ fontSize: 13, color: '#64748B', lineHeight: 1.5 }}>{message}</div>
           </div>
         </div>
 
@@ -403,6 +406,7 @@ export default function LoanDetails() {
    ───────────────────────────────────────────────────────────── */
 function MemberLoanGroup({ group, expanded, payments, loadingPayments, amountInputs, payingIds, onExpand, onMarkPaid, onMarkUnpaid, onDeleteLoan, onAmountChange }) {
   const { memberName, memberVillage, loans } = group;
+  const isAdmin = useIsAdmin();
 
   // Aggregate stats across all this member's loans
   const totalRemaining    = loans.reduce((s, l) => s + l.remainingBalance, 0);
@@ -513,8 +517,9 @@ function MemberLoanGroup({ group, expanded, payments, loadingPayments, amountInp
                 <div style={{ fontSize: 10, color: 'var(--color-text-muted)', flex: 1, minWidth: 0 }}>
                   Granted: {(loan.grantedAt || loan.startDate) ? new Date(loan.grantedAt || loan.startDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                 </div>
-                <button
+                {isAdmin && <button
                   title="Delete this loan"
+                  aria-label={`Delete loan #${loanIdx + 1} of ${memberName}`}
                   onClick={e => { e.stopPropagation(); onDeleteLoan(loan._id, memberName); }}
                   style={{
                     background: 'none', border: 'none', cursor: 'pointer',
@@ -526,7 +531,7 @@ function MemberLoanGroup({ group, expanded, payments, loadingPayments, amountInp
                   onMouseLeave={e => e.currentTarget.style.opacity = 0.7}
                 >
                   <Trash2 size={14} />
-                </button>
+                </button>}
               </div>
 
               {/* ── Loan summary row (clickable) ── */}
@@ -633,7 +638,8 @@ function MarkPaidButton({ paying, onClick, style }) {
 
 // Only the most recent payment can be reverted; weeks paid in advance point at the payment that covered them
 function PaidAction({ p, onRevert, style }) {
-  if (p.canRevert) {
+  const isAdmin = useIsAdmin(); // reverting a payment is admin-only in the API
+  if (p.canRevert && isAdmin) {
     return (
       <button
         className="btn btn-sm"

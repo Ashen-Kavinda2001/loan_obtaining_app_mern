@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import client from '../api/client';
 import { formatCurrency } from '../data/demoData';
+import { useIsAdmin } from '../auth';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 // "2026-09-28" → "28 Sep" (weekStart is a local date string, so parse it as local, not UTC)
@@ -19,6 +20,7 @@ export default function Dashboard() {
   const [loans, setLoans]   = useState([]);
   const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
+  const isAdmin = useIsAdmin();
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -175,7 +177,7 @@ export default function Dashboard() {
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>Quick Actions</div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <Link to="/register"   className="btn btn-primary" ><PlusCircle  size={14} /> Register Member</Link>
-          <Link to="/grant-loan" className="btn btn-success" ><CreditCard  size={14} /> Grant Loan</Link>
+          {isAdmin && <Link to="/grant-loan" className="btn btn-success" ><CreditCard  size={14} /> Grant Loan</Link>}
           <Link to="/members"    className="btn btn-outline" ><Users       size={14} /> Members</Link>
           <Link to="/loans"      className="btn btn-outline" ><ArrowUpRight size={14} /> All Loans</Link>
         </div>
