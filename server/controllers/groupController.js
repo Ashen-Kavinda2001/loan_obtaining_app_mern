@@ -1,5 +1,5 @@
 const { Op, fn, col } = require('sequelize');
-const { sequelize, Group, Member } = require('../models');
+const { Group, Member } = require('../models');
 
 // @desc    Get all groups with member counts + ungrouped count
 // @route   GET /api/groups
@@ -99,11 +99,10 @@ const deleteGroup = async (req, res, next) => {
     const group = await Group.findByPk(groupId);
     if (!group) return res.status(404).json({ message: 'Group not found' });
 
-    // Both steps or neither: a failure halfway must not leave members pointing at a deleted group
-    await sequelize.transaction(async (t) => {
-      await Member.update({ groupId: null }, { where: { groupId: group.id }, transaction: t });
-      await group.destroy({ transaction: t });
-    });
+    // Unassign all members in this group
+    await Member.update({ groupId: null }, { where: { groupId: group.id } });
+
+    await group.destroy();
     res.json({ message: 'Group deleted. Members have been moved to Ungrouped.' });
   } catch (err) {
     next(err);
