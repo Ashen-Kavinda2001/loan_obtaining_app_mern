@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { CreditCard, Calculator } from 'lucide-react';
 import client from '../api/client';
 import { formatCurrency } from '../data/demoData';
+import { useIsAdmin } from '../auth';
 
 // B21: the device's local date ('en-CA' formats as YYYY-MM-DD); toISOString() would give the UTC
 // date, which is still yesterday in Sri Lanka until 05:30
@@ -20,7 +21,22 @@ function Field({ label, error, children }) {
   );
 }
 
+// Granting loans is admin-only in the API; other roles get a message instead of a form that would fail
 export default function GrantLoan() {
+  const isAdmin = useIsAdmin();
+  if (isAdmin) return <GrantLoanForm />;
+  return (
+    <div className="page-content">
+      <div className="card" style={{ maxWidth: 480, margin: '40px auto', textAlign: 'center', padding: 28, fontSize: 13, color: 'var(--color-text-muted)' }}>
+        <CreditCard size={28} color="#94A3B8" style={{ marginBottom: 10 }} />
+        <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--color-text)', marginBottom: 6 }}>Only an admin can grant loans</div>
+        Ask an admin to grant the loan. You can still register members and record payments.
+      </div>
+    </div>
+  );
+}
+
+function GrantLoanForm() {
   const [members, setMembers]   = useState([]);
   const [form, setForm]         = useState(getInitialForm);
   const [errors, setErrors]     = useState({});

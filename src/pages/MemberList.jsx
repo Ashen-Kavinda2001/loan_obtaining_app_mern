@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import client from '../api/client';
+import { useIsAdmin } from '../auth';
+import { useEscapeKey } from '../components/useEscapeKey';
 
 const GROUP_GRADIENTS = [
   'linear-gradient(135deg,#4F46E5,#818CF8)',
@@ -38,7 +40,7 @@ export default function MemberList() {
   const [ungroupedCount, setUngroupedCount] = useState(0);
   const [selectedGroup, setSelectedGroup]   = useState(null); // null | group | 'ungrouped'
   const [members, setMembers]   = useState([]);   // members in current context
-  const [loading, setLoading]   = useState(true);
+  const [loading, setLoading]   = useState(false); // only the member tables use it
 
   // ── Modal state ─────────────────────────────────────────────
   const [editGroup, setEditGroup]         = useState(null);
@@ -47,15 +49,16 @@ export default function MemberList() {
   const [editMember, setEditMember]       = useState(null);
   const [deleteId, setDeleteId]           = useState(null);
   const [saving, setSaving]               = useState(false);
+  const isAdmin = useIsAdmin(); // renaming/deleting groups and editing/deleting members is admin-only
 
   // ── Fetch groups ─────────────────────────────────────────────
-  const fetchGroups = useCallback(async () => {
-    try {
-      const { data } = await client.get('/groups');
-      setGroups(data.groups || []);
-      setUngroupedCount(data.ungroupedCount || 0);
-    } catch { /* silent */ }
-  }, []);
+  const fetchGroups = useCallback(() =>
+    client.get('/groups')
+      .then(({ data }) => {
+        setGroups(data.groups || []);
+        setUngroupedCount(data.ungroupedCount || 0);
+      })
+      .catch(() => { /* silent */ }), []);
 
   // ── Fetch members (all, by group, or ungrouped) ─────────────
   const fetchMembers = useCallback(async (context) => {
@@ -72,16 +75,14 @@ export default function MemberList() {
 
   useEffect(() => {
     fetchGroups();
-    if (searchMode === 'member') fetchMembers(null);
-    else setLoading(false);
-  }, []);
+  }, [fetchGroups]);
 
-  // When switching to member search mode fetch all members
-  useEffect(() => {
-    if (searchMode === 'member') {
-      fetchMembers(null);
-    }
-  }, [searchMode]);
+  // Switching to member search mode fetches all members
+  const changeSearchMode = (mode) => {
+    setSearchMode(mode);
+    setQuery('');
+    if (mode === 'member' && searchMode !== 'member') fetchMembers(null);
+  };
 
   // Drill into a group
   const enterGroup = (group) => {
@@ -196,7 +197,7 @@ export default function MemberList() {
             }}>
               {['group', 'member'].map(mode => (
                 <button key={mode}
-                  onClick={() => { setSearchMode(mode); setQuery(''); }}
+                  onClick={() => changeSearchMode(mode)}
                   style={{
                     padding: '7px 14px', fontSize: 12, fontWeight: 600,
                     border: 'none', cursor: 'pointer',
@@ -259,8 +260,8 @@ export default function MemberList() {
                 group={g}
                 gradient={GROUP_GRADIENTS[idx % GROUP_GRADIENTS.length]}
                 onClick={() => enterGroup(g)}
-                onEdit={() => { setEditGroup(g); setEditGroupName(g.name); }}
-                onDelete={() => setDeleteGroupId(g._id)}
+                onEdit={isAdmin ? () => { setEditGroup(g); setEditGroupName(g.name); } : null}
+                onDelete={isAdmin ? () => setDeleteGroupId(g._id) : null}
               />
             ))}
 
@@ -308,8 +309,8 @@ export default function MemberList() {
           query={query}
           loading={loading}
           showGroup
-          onEdit={m => setEditMember({ ...m, groupId: m.groupId?._id || '' })}
-          onDelete={id => setDeleteId(id)}
+          onEdit={isAdmin ? m => setEditMember({ ...m, groupId: m.groupId?._id || '' }) : null}
+          onDelete={isAdmin ? id => setDeleteId(id) : null}
         />
       )}
 
@@ -322,8 +323,8 @@ export default function MemberList() {
           query={query}
           loading={loading}
           showGroup={false}
-          onEdit={m => setEditMember({ ...m, groupId: m.groupId?._id || '' })}
-          onDelete={id => setDeleteId(id)}
+          onEdit={isAdmin ? m => setEditMember({ ...m, groupId: m.groupId?._id || '' }) : null}
+          onDelete={isAdmin ? id => setDeleteId(id) : null}
         />
       )}
 
@@ -460,8 +461,8 @@ function GroupCard({ group, gradient, onClick, onEdit, onDelete }) {
         </div>
       </div>
 
-      {/* Actions */}
-      <div style={{ display: 'flex', borderTop: '1px solid var(--color-border)' }}>
+      {/* Actions (admin only) */}
+      {onEdit && onDelete && <div style={{ display: 'flex', borderTop: '1px solid var(--color-border)' }}>
         <button
           className="btn btn-ghost btn-sm"
           style={{ flex: 1, justifyContent: 'center', borderRadius: 0, borderRight: '1px solid var(--color-border)' }}
@@ -478,7 +479,18 @@ function GroupCard({ group, gradient, onClick, onEdit, onDelete }) {
         >
           <Trash2 size={13} /> Delete
         </button>
-      </div>
+      </div>}
+    </div>
+  );
+}
+
+// Icon-only Edit/Delete buttons for one member; nothing when the user may not change members
+function MemberActions({ m, onEdit, onDelete }) {
+  if (!onEdit || !onDelete) return null;
+  return (
+    <div style={{ display: 'flex', gap: 4 }}>
+      <button className="btn btn-ghost btn-sm" aria-label={`Edit ${m.fullName}`} title="Edit member" onClick={() => onEdit(m)}><Edit2 size={14} /></button>
+      <button className="btn btn-ghost btn-sm" aria-label={`Delete ${m.fullName}`} title="Delete member" style={{ color: 'var(--color-danger)' }} onClick={() => onDelete(m._id)}><Trash2 size={14} /></button>
     </div>
   );
 }
@@ -537,10 +549,7 @@ function MembersTable({ members, query, loading, showGroup, onEdit, onDelete }) 
                   {new Date(m.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                 </td>
                 <td>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    <button className="btn btn-ghost btn-sm" onClick={() => onEdit(m)}><Edit2 size={14} /></button>
-                    <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-danger)' }} onClick={() => onDelete(m._id)}><Trash2 size={14} /></button>
-                  </div>
+                  <MemberActions m={m} onEdit={onEdit} onDelete={onDelete} />
                 </td>
               </tr>
             ))}
@@ -563,10 +572,7 @@ function MembersTable({ members, query, loading, showGroup, onEdit, onDelete }) 
                     {showGroup && m.groupId && <> · <span style={{ color: '#4F46E5', fontWeight: 600 }}>{m.groupId.name}</span></>}
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <button className="btn btn-ghost btn-sm" onClick={() => onEdit(m)}><Edit2 size={14} /></button>
-                  <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-danger)' }} onClick={() => onDelete(m._id)}><Trash2 size={14} /></button>
-                </div>
+                <MemberActions m={m} onEdit={onEdit} onDelete={onDelete} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--color-border)', fontSize: 12 }}>
                 <div><div style={{ fontSize: 10, color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: 1 }}>NIC</div><span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{m.idNumber}</span></div>
@@ -580,12 +586,14 @@ function MembersTable({ members, query, loading, showGroup, onEdit, onDelete }) 
 }
 
 function Modal({ children, onClose, title, wide }) {
+  useEscapeKey(onClose);
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={wide ? { maxWidth: 560 } : { maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label={title || 'Confirm'}
+        style={wide ? { maxWidth: 560 } : { maxWidth: 420 }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-title">{title}</div>
-          <button className="btn btn-ghost" onClick={onClose}><X size={16} /></button>
+          <button className="btn btn-ghost" aria-label="Close" onClick={onClose}><X size={16} /></button>
         </div>
         {children}
       </div>

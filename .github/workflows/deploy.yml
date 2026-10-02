@@ -4,10 +4,53 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
+  # ── Gate: nothing is deployed unless lint, unit tests and the build all pass ──
+  # Runs on every pull request too, so problems show up before merging.
+  checks:
+    name: Lint, Test & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: ⬇️ Checkout Repository Code
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22 # `node --test "tests/*.test.js"` needs Node 21+
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      - name: 📦 Install Frontend Dependencies
+        run: npm ci
+
+      - name: 📦 Install Backend Dependencies
+        run: npm ci
+        working-directory: server
+
+      - name: 🔍 Lint (frontend + backend)
+        run: npm run lint
+
+      - name: 🧪 Unit Tests (loan and payment maths)
+        run: npm test
+        working-directory: server
+
+      - name: 🏗️ Build Frontend
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: /api
+
   build-and-deploy:
     name: Build & Deploy to cPanel
+    needs: checks
+    if: github.event_name == 'push' # pull requests are only checked, never deployed
     runs-on: ubuntu-latest
 
     steps:

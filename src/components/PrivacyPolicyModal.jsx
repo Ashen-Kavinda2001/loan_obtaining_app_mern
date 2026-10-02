@@ -1,6 +1,8 @@
-import { X, ShieldCheck, FileText } from 'lucide-react';
+import { X, ShieldCheck } from 'lucide-react';
+import { useEscapeKey } from './useEscapeKey';
 
 export default function PrivacyPolicyModal({ isOpen, onClose }) {
+  useEscapeKey(isOpen ? onClose : null);
   if (!isOpen) return null;
 
   return (
@@ -15,7 +17,7 @@ export default function PrivacyPolicyModal({ isOpen, onClose }) {
       justifyContent: 'center',
       padding: '20px',
     }}>
-      <div style={{
+      <div role="dialog" aria-modal="true" aria-labelledby="privacy-title" style={{
         backgroundColor: '#FFFFFF',
         borderRadius: '16px',
         maxWidth: '680px',
@@ -48,7 +50,7 @@ export default function PrivacyPolicyModal({ isOpen, onClose }) {
               <ShieldCheck size={20} />
             </div>
             <div>
-              <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#0F172A', margin: 0 }}>
+              <h2 id="privacy-title" style={{ fontSize: '18px', fontWeight: 700, color: '#0F172A', margin: 0 }}>
                 Data Privacy Policy & Terms of Service
               </h2>
               <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>
@@ -58,6 +60,7 @@ export default function PrivacyPolicyModal({ isOpen, onClose }) {
           </div>
           <button
             onClick={onClose}
+            aria-label="Close"
             style={{
               background: 'transparent',
               border: 'none',
@@ -114,7 +117,7 @@ export default function PrivacyPolicyModal({ isOpen, onClose }) {
             </p>
             <ul style={{ paddingLeft: '20px', marginTop: '6px', marginBottom: 0 }}>
               <li><strong>Text.lk SMS Gateway:</strong> Dispatches transactional SMS messages via TLS-encrypted API calls.</li>
-              <li><strong>MongoDB Atlas:</strong> Stores borrower data with automated encryption-at-rest.</li>
+              <li><strong>MySQL database (our hosting provider):</strong> Stores borrower data on the server that runs this system.</li>
             </ul>
           </div>
 

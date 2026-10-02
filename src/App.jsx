@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import './index.css';
 import './App.css';
 
+import { UserContext } from './auth';
+import ErrorBoundary  from './components/ErrorBoundary';
 import Sidebar        from './components/Sidebar';
 import Topbar         from './components/Topbar';
 import Dashboard      from './pages/Dashboard';
@@ -15,11 +17,13 @@ import AccountSettings from './pages/AccountSettings';
 
 function AppShell({ onLogout, user }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { pathname } = useLocation();
 
   const closeSidebar = () => setSidebarOpen(false);
   const toggleSidebar = () => setSidebarOpen(prev => !prev);
 
   return (
+    <UserContext.Provider value={user}>
     <div className="app-layout">
       {sidebarOpen && (
         <div className="sidebar-overlay" onClick={closeSidebar} />
@@ -34,17 +38,20 @@ function AppShell({ onLogout, user }) {
 
       <div className="main-content">
         <Topbar onMenuToggle={toggleSidebar} user={user} />
-        <Routes>
-          <Route path="/"           element={<Dashboard />} />
-          <Route path="/members"    element={<MemberList />} />
-          <Route path="/register"   element={<RegisterMember />} />
-          <Route path="/grant-loan" element={<GrantLoan />} />
-          <Route path="/loans"      element={<LoanDetails />} />
-          <Route path="/settings"   element={<AccountSettings />} />
-          <Route path="*"           element={<Navigate to="/" replace />} />
-        </Routes>
+        <ErrorBoundary resetKey={pathname}>
+          <Routes>
+            <Route path="/"           element={<Dashboard />} />
+            <Route path="/members"    element={<MemberList />} />
+            <Route path="/register"   element={<RegisterMember />} />
+            <Route path="/grant-loan" element={<GrantLoan />} />
+            <Route path="/loans"      element={<LoanDetails />} />
+            <Route path="/settings"   element={<AccountSettings />} />
+            <Route path="*"           element={<Navigate to="/" replace />} />
+          </Routes>
+        </ErrorBoundary>
       </div>
     </div>
+    </UserContext.Provider>
   );
 }
 

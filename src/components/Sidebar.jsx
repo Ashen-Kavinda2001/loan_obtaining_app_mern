@@ -6,18 +6,20 @@ import {
 } from 'lucide-react';
 import fgiLogo from '../assets/logo.jpeg';
 import PrivacyPolicyModal from './PrivacyPolicyModal';
+import { useIsAdmin } from '../auth';
 
 const navItems = [
   { to: '/',           icon: LayoutDashboard, label: 'Dashboard'       },
   { to: '/members',    icon: Users,           label: 'Members'          },
   { to: '/loans',      icon: CreditCard,      label: 'Loan Details'     },
-  { to: '/grant-loan', icon: PlusCircle,      label: 'Grant Loan'       },
+  { to: '/grant-loan', icon: PlusCircle,      label: 'Grant Loan',      adminOnly: true },
   { to: '/register',   icon: FileText,        label: 'Register Member'  },
   { to: '/settings',   icon: Settings,        label: 'Account Settings' },
 ];
 
 export default function Sidebar({ isOpen, onClose, onLogout, user }) {
   const [showPrivacy, setShowPrivacy] = useState(false);
+  const isAdmin = useIsAdmin();
 
   const initial = user?.email ? user.email.charAt(0).toUpperCase() : 'A';
   const username = user?.email ? user.email.split('@')[0] : 'Admin';
@@ -42,7 +44,7 @@ export default function Sidebar({ isOpen, onClose, onLogout, user }) {
 
       {/* Navigation */}
       <nav className="sidebar-nav">
-        {navItems.map(({ to, icon: Icon, label }) => (
+        {navItems.filter(item => isAdmin || !item.adminOnly).map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
