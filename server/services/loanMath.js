@@ -55,6 +55,14 @@ const deriveLoanStatus = ({ remainingBalance, rows, today }) => {
   return rows.some((r) => isOpen(r) && r.dueDate < today) ? 'overdue' : 'active';
 };
 
+// Balance minus what the open installments add up to. Positive: part of the balance is on no week.
+// Negative: the weeks ask for more than is owed. Zero on a healthy loan.
+const scheduleGapCents = ({ remainingBalance, rows }) =>
+  toCents(remainingBalance) - rows.filter(isOpen).reduce((sum, r) => sum + toCents(r.amountDue), 0);
+
+// Old schedules were rounded to the rupee each week, so up to Rs. 1 per week is rounding, not a fault
+const roundingToleranceCents = (rows) => 100 * rows.length;
+
 // ── Payment history ─────────────────────────────────────────────────────────
 
 const parseCascadeLog = (row) => {
@@ -129,11 +137,14 @@ const buildCascadeLog = ({ rows, plan, createdIds, loanBefore, at }) => JSON.str
  *  1. The target installment records the full cash amount.
  *  2. Any excess pays the oldest open installments first (FIFO). Fully covered rows become
  *     auto-paid, and the next one is reduced by whatever is left.
- *  3. The open installments must then add up to the loan's new remaining balance.
+ *  3. The open installments are then brought in line with the loan's new remaining balance.
  *     - A gap (a partial payment, B3) is carried to the next open installment after the target,
  *       or to a new extension week when there is none, so the shortfall is still collected.
  *     - A surplus (older schedules rounded up, B10) is taken off the latest installments;
  *       any that reach zero are closed.
+ *     - A gap that existed BEFORE this payment (the balance was above the open installments, left
+ *       by older code or a rollback) is never moved onto a week here, unless it is only rounding.
+ *       It is shown on the loan page and fixed by `npm run check-loans -- --fix` (planRepair).
  *
  * The caller must already have checked that the target is open and that amount ≤ remainingBefore.
  * Returns { changes: [{ id, set }], create }: `set` holds new column values and `create` is
@@ -157,6 +168,7 @@ const planPayment = ({ rows, targetId, amount, remainingBefore, now, today }) =>
     .filter((r) => r.id !== target.id && isOpen(r))
     .sort(byWeek)
     .map((row) => ({ row, dueC: toCents(row.amountDue), closed: false }));
+  const preGapC = scheduleGapCents({ remainingBalance: remainingBefore, rows });
 
   let excessC = amountC - dueC;
   for (const o of open) {
@@ -177,6 +189,7 @@ const planPayment = ({ rows, targetId, amount, remainingBefore, now, today }) =>
 
   const stillOpen = open.filter((o) => !o.closed);
   let gapC = remainingAfterC - stillOpen.reduce((sum, o) => sum + o.dueC, 0);
+  if (preGapC > roundingToleranceCents(rows)) gapC -= preGapC; // only this payment's own shortfall
   let create = null;
 
   if (gapC > 0) {
@@ -231,6 +244,14 @@ const planReversal = ({ rows, targetId, loan, today }) => {
   const rowById = new Map(rows.map((r) => [r.id, r]));
   const log = parseCascadeLog(target);
 
+  // The loan totals move back by exactly the cash of this payment. Normally that equals the totals
+  // saved in the log; it stays right even if planRepair corrected the loan after the payment.
+  const cashC = toCents(target.amountPaid);
+  const loanAfter = {
+    paidAmount:       fromCents(Math.max(0, toCents(loan.paidAmount) - cashC)),
+    remainingBalance: fromCents(Math.min(toCents(loan.totalRepayable), toCents(loan.remainingBalance) + cashC)),
+  };
+
   if (log) {
     const changes = log.rows.map(({ id, before }) => {
       const row = rowById.get(id);
@@ -251,7 +272,7 @@ const planReversal = ({ rows, targetId, loan, today }) => {
         throw httpError(409, `Week ${row.monthNumber} has been paid since; revert it first`);
       }
     }
-    return { changes, deleteIds, loan: { ...log.loan } };
+    return { changes, deleteIds, loan: loanAfter };
   }
 
   const reopen = (row, extra = {}) => ({
@@ -262,7 +283,6 @@ const planReversal = ({ rows, targetId, loan, today }) => {
     },
   });
 
-  const cashC = toCents(target.amountPaid);
   const autoRows = rows.filter((r) =>
     r.id !== target.id && r.status === 'paid' && r.isAutoPaid && sameInstant(r.paidAt, target.paidAt));
   const changes = [reopen(target), ...autoRows.map((r) => reopen(r, { amountDue: Number(r.amountPaid) }))];
@@ -274,13 +294,94 @@ const planReversal = ({ rows, targetId, loan, today }) => {
     if (reduced) changes.push({ id: reduced.id, set: { amountDue: fromCents(toCents(reduced.amountDue) + leftoverC) } });
   }
 
+  return { changes, deleteIds: [], loan: loanAfter };
+};
+
+// ── Repairing a loan ────────────────────────────────────────────────────────
+
+/**
+ * Bring one loan back in line with the cash actually received (used by scripts/check-loans.js).
+ *
+ * The truth is the cash on manual payments: auto-paid rows only record what an overpayment covered,
+ * their cash is already on the manual row. So:
+ *   paidAmount = Σ amountPaid of manual payments, remainingBalance = totalRepayable − paidAmount.
+ * Then the open installments are made to add up to that balance:
+ *   - Missing money first reopens auto-paid weeks that no recorded payment covers any more (left
+ *     when the payment that covered them was reverted by older code, B4), then any rest becomes
+ *     one extra week after the last one.
+ *   - Too much is taken off the latest open weeks (weeks that reach zero are closed).
+ *
+ * Returns { loan: { paidAmount, remainingBalance, status }, changes: [{ id, set }], create, notes }.
+ * `notes` explains every change in plain words; no change at all means the loan is healthy.
+ */
+const planRepair = ({ loan, rows, today, now = new Date() }) => {
+  const notes = [];
+  const rs = (cents) => `Rs. ${fromCents(cents).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+  const totalC = toCents(loan.totalRepayable);
+  const cashC = rows.filter(isManualPayment).reduce((sum, r) => sum + toCents(r.amountPaid), 0);
+  const balanceC = Math.max(0, totalC - cashC);
+  if (cashC > totalC) notes.push(`received ${rs(cashC)}, which is ${rs(cashC - totalC)} more than the loan total — review by hand`);
+
+  if (toCents(loan.paidAmount) !== cashC) {
+    notes.push(`paid so far ${rs(toCents(loan.paidAmount))} → ${rs(cashC)} (the cash on its payments)`);
+  }
+  if (toCents(loan.remainingBalance) !== balanceC) {
+    notes.push(`balance ${rs(toCents(loan.remainingBalance))} → ${rs(balanceC)} (total − paid)`);
+  }
+
+  const changes = new Map();
+  const set = (id, fields) => changes.set(id, { ...changes.get(id), ...fields });
+  const open = rows.filter(isOpen).sort(byWeek).map((row) => ({ row, dueC: toCents(row.amountDue) }));
+  let gapC = balanceC - open.reduce((sum, o) => sum + o.dueC, 0);
+  let create = null;
+
+  if (gapC > 0) {
+    const covered = coveringWeeks(rows);
+    const orphans = rows
+      .filter((r) => r.status === 'paid' && r.isAutoPaid && !covered.has(r.id) && toCents(r.amountPaid) > 0)
+      .sort(byWeek);
+    for (const r of orphans) {
+      const amountC = toCents(r.amountPaid);
+      if (amountC > gapC) continue;
+      set(r.id, {
+        status: openStatus(r.dueDate, today), amountDue: fromCents(amountC), amountPaid: 0,
+        paidAt: null, isPartial: false, isAutoPaid: false,
+      });
+      notes.push(`week ${r.monthNumber} reopened (${rs(amountC)}): it was marked paid by a payment that no longer exists`);
+      gapC -= amountC;
+    }
+    if (gapC > 0) {
+      const last = rows.reduce((a, b) => (b.monthNumber > a.monthNumber ? b : a));
+      const dueDate = addDays(last.dueDate, 7);
+      create = {
+        monthNumber: last.monthNumber + 1, amountDue: fromCents(gapC), amountPaid: 0, dueDate,
+        paidAt: null, status: openStatus(dueDate, today), isPartial: false, isAutoPaid: false,
+      };
+      notes.push(`week ${create.monthNumber} added for ${rs(gapC)} of the balance that was on no week`);
+    }
+  } else if (gapC < 0) {
+    for (const o of [...open].reverse()) {
+      if (gapC >= 0) break;
+      const take = Math.min(o.dueC, -gapC);
+      o.dueC -= take;
+      gapC += take;
+      set(o.row.id, o.dueC === 0
+        ? { amountDue: 0, status: 'paid', amountPaid: 0, paidAt: now, isPartial: false, isAutoPaid: true }
+        : { amountDue: fromCents(o.dueC) });
+      notes.push(`week ${o.row.monthNumber} reduced by ${rs(take)}${o.dueC === 0 ? ' and closed' : ''} (the weeks asked for more than the balance)`);
+    }
+  }
+
+  const changed = rows.map((r) => ({ ...r, ...changes.get(r.id) }));
   return {
-    changes,
-    deleteIds: [],
     loan: {
-      paidAmount:       fromCents(Math.max(0, toCents(loan.paidAmount) - cashC)),
-      remainingBalance: fromCents(Math.min(toCents(loan.totalRepayable), toCents(loan.remainingBalance) + cashC)),
+      paidAmount:       fromCents(cashC),
+      remainingBalance: fromCents(balanceC),
+      status:           deriveLoanStatus({ remainingBalance: fromCents(balanceC), rows: [...changed, ...(create ? [create] : [])], today }),
     },
+    changes: [...changes].map(([id, fields]) => ({ id, set: fields })),
+    create,
+    notes,
   };
 };
 
@@ -292,10 +393,13 @@ module.exports = {
   buildSchedule,
   displayStatus,
   deriveLoanStatus,
+  scheduleGapCents,
+  roundingToleranceCents,
   parseCascadeLog,
   latestManualPayment,
   coveringWeeks,
   buildCascadeLog,
   planPayment,
   planReversal,
+  planRepair,
 };
