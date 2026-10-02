@@ -5,6 +5,7 @@ if (dns.setDefaultResultOrder) {
 }
 
 require('dotenv').config();
+require('./config/timezone'); // before anything creates a Date — see the file for why
 
 // ── Cryptographic Pre-flight Checks ──────────────────────
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
@@ -24,7 +25,9 @@ require('./models'); // Loads models and associations
 const initializeApp = require('./init');
 const { protect, authorize } = require('./middleware/auth');
 
-// Connect to MySQL, then run first-time admin setup if needed
+// Connect to MySQL, then run first-time admin setup if needed.
+// Schema changes run by hand (`npm run migrate`), and the overdue sync runs from a daily cron job
+// (scripts/sync-overdue.js) — neither runs at boot, so a restart never holds up requests.
 connectDB()
   .then(() => initializeApp());
 

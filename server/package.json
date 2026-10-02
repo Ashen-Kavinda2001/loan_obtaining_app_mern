@@ -6,7 +6,11 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "seed": "node seed.js"
+    "seed": "node seed.js",
+    "test": "node --test \"tests/*.test.js\"",
+    "migrate": "node scripts/migrate.js",
+    "sync-overdue": "node scripts/sync-overdue.js",
+    "check-loans": "node scripts/check-loans.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -19,7 +23,8 @@
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.24.4",
     "nodemailer": "^9.0.3",
-    "sequelize": "^6.37.8"
+    "sequelize": "^6.37.8",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "nodemon": "^3.1.3"

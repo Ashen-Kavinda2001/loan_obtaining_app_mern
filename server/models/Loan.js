@@ -57,8 +57,18 @@ const Loan = sequelize.define('Loan', {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
+  // Soft delete: a deleted loan keeps its row and payment history (7-year retention)
+  deletedBy: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  deleteReason: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+  },
 }, {
   timestamps: true,
+  paranoid: true, // adds deletedAt; default queries skip deleted loans
 });
 
 Loan.prototype.toJSON = function () {
