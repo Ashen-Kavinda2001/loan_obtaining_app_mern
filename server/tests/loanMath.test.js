@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   toCents, buildInstallments, buildSchedule, deriveLoanStatus, displayStatus,
   latestManualPayment, coveringWeeks, buildCascadeLog, planPayment, planReversal,
+  planRepair, scheduleGapCents,
 } = require('../services/loanMath');
 
 const TODAY = '2026-10-01';
@@ -164,14 +165,50 @@ test('trimming closes weeks that reach zero', () => {
   assert.equal(s.rows[2].isAutoPaid, true);
 });
 
-test('an under-scheduled old loan is healed on its next payment', () => {
+test('a gap left by older code is never moved onto the next week by a payment', () => {
   // Pre-fix partial payment: week 1 paid 60 of 100 and the 40 shortfall was never carried
   const s = makeLoan([100, 100, 100]);
   Object.assign(s.rows[0], { status: 'paid', amountPaid: 60, isPartial: true, paidAt: new Date(5000) });
   Object.assign(s.loan, { paidAmount: 60, remainingBalance: 240 });
   pay(s, 2, 100);
-  assert.deepEqual(dues(s), [100, 100, 140]);
-  assert.equal(openSum(s), 140);
+  assert.deepEqual(dues(s), [100, 100, 100]);
+  assert.equal(s.loan.remainingBalance, 140);
+  assert.equal(scheduleGapCents({ remainingBalance: s.loan.remainingBalance, rows: s.rows }), 4000); // left for planRepair
+});
+
+// The loan in the screenshots: the balance was one week (3,250) above the open weeks
+const loanWithWeekGap = () => {
+  const s = makeLoan(Array(10).fill(3250));
+  for (let w = 1; w <= 5; w++) Object.assign(s.rows[w - 1], { status: 'paid', amountPaid: 3250, paidAt: new Date(w * 1000) });
+  Object.assign(s.rows[4], { isAutoPaid: true }); // week 5: paid by an overpayment that was reverted by old code
+  Object.assign(s.loan, { paidAmount: 13000, remainingBalance: 19500 }); // 32,500 − 4 × 3,250 cash
+  return s;
+};
+
+test('partial payment carries only its own shortfall, not an older gap', () => {
+  const s = pay(loanWithWeekGap(), 6, 2000);
+  assert.equal(s.rows[6].amountDue, 4500); // 3,250 + 1,250 — was 7,750 before the fix
+  assert.equal(s.loan.remainingBalance, 17500);
+});
+
+test('overpayment reduces only by its own excess, not an older gap', () => {
+  const s = pay(loanWithWeekGap(), 6, 4000);
+  assert.equal(s.rows[6].amountDue, 2500); // 3,250 − 750 — was 5,750 before the fix
+  assert.equal(s.loan.remainingBalance, 15500);
+});
+
+test('a rounding-sized gap is still absorbed by the next payment', () => {
+  const s = makeLoan([100, 100, 100], { totalRepayable: 302 });
+  pay(s, 1, 100);
+  assert.deepEqual(dues(s), [100, 102, 100]);
+  assert.equal(openSum(s), s.loan.remainingBalance);
+});
+
+test('paying the whole balance closes the remaining weeks even with an older gap', () => {
+  const s = loanWithWeekGap();
+  pay(s, 6, 19500);
+  assert.equal(s.loan.remainingBalance, 0);
+  assert.ok(s.rows.every((r) => r.status === 'paid'));
 });
 
 // ── Reverting payments ──────────────────────────────────────────────────────
@@ -266,4 +303,62 @@ test('status is read from the due date, not the stored flag', () => {
   const rows = [{ status: 'pending', dueDate: '2026-09-30' }];
   assert.equal(deriveLoanStatus({ remainingBalance: 10, rows, today: TODAY }), 'overdue');
   assert.equal(deriveLoanStatus({ remainingBalance: 10, rows, today: '2026-09-30' }), 'active');
+});
+
+// ── Repairing loans ─────────────────────────────────────────────────────────
+
+const applyRepair = (state) => {
+  const plan = planRepair({ loan: state.loan, rows: state.rows, today: TODAY, now: new Date(clock += 1000) });
+  for (const { id, set } of plan.changes) Object.assign(state.rows.find((r) => r.id === id), set);
+  if (plan.create) state.rows.push({ id: Math.max(...state.rows.map((r) => r.id)) + 1, ...plan.create, cascadeLog: null });
+  Object.assign(state.loan, { paidAmount: plan.loan.paidAmount, remainingBalance: plan.loan.remainingBalance });
+  return plan;
+};
+
+test('repair leaves a healthy loan alone', () => {
+  const s = makeLoan([100, 100, 100]);
+  pay(s, 1, 60);
+  pay(s, 2, 200); // covers 140 of week 2 and 60 of week 3
+  const plan = planRepair({ loan: s.loan, rows: s.rows, today: TODAY });
+  assert.deepEqual([plan.notes, plan.changes, plan.create], [[], [], null]);
+});
+
+test('repair reopens a week paid by a payment that no longer exists (the screenshot loan)', () => {
+  const s = loanWithWeekGap();
+  const plan = applyRepair(s);
+  assert.deepEqual([s.rows[4].status, s.rows[4].amountDue, s.rows[4].isAutoPaid], ['pending', 3250, false]); // week 5
+  assert.equal(s.loan.remainingBalance, 19500); // the balance was right; the week was wrongly closed
+  assert.equal(plan.create, null);
+  assert.equal(openSum(s), s.loan.remainingBalance);
+  assert.match(plan.notes.join('\n'), /week 5 reopened/);
+});
+
+test('repair corrects a balance inflated by the old revert bug (B4)', () => {
+  const s = makeLoan([100, 100, 100]);
+  Object.assign(s.rows[0], { status: 'paid', amountPaid: 100, paidAt: new Date(1) });
+  Object.assign(s.loan, { paidAmount: 0, remainingBalance: 300 }); // 100 received, but counted as unpaid
+  const plan = applyRepair(s);
+  assert.deepEqual([s.loan.paidAmount, s.loan.remainingBalance], [100, 200]);
+  assert.equal(plan.create, null);
+  assert.deepEqual(dues(s), [100, 100, 100]); // weeks 2 + 3 already add up to 200
+  assert.equal(plan.notes.length, 2);
+});
+
+test('repair puts an uncarried old shortfall on one extra week', () => {
+  const s = makeLoan([100, 100, 100]);
+  Object.assign(s.rows[0], { status: 'paid', amountPaid: 60, isPartial: true, paidAt: new Date(5000) });
+  Object.assign(s.loan, { paidAmount: 60, remainingBalance: 240 });
+  const plan = applyRepair(s);
+  assert.deepEqual(plan.create && [plan.create.monthNumber, plan.create.amountDue], [4, 40]);
+  assert.equal(openSum(s), 240);
+});
+
+test('reverting a payment made before a repair keeps the corrected balance', () => {
+  const s = makeLoan([100, 100, 100]);
+  pay(s, 1, 100);
+  s.loan.remainingBalance = 250; // corrupted after the payment (e.g. by old code)
+  applyRepair(s);
+  assert.equal(s.loan.remainingBalance, 200);
+  revert(s, 1);
+  assert.deepEqual([s.loan.paidAmount, s.loan.remainingBalance], [0, 300]);
 });

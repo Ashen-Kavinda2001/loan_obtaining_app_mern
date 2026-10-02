@@ -654,12 +654,32 @@ function PaidAction({ p, onRevert, style }) {
 /* ─────────────────────────────────────────────────────────────
    PaymentSchedule — desktop table + mobile cards
    ───────────────────────────────────────────────────────────── */
+// Balance minus the open weeks, in cents. Older code could leave the two apart; payments no longer
+// move such a difference onto a week, so it is shown here until `npm run check-loans -- --fix` corrects it.
+// Up to Rs. 1 per week is old rounding and is absorbed by the next payment.
+function scheduleGap(loan, loanPayments) {
+  const openC = loanPayments
+    .filter(p => p.status === 'pending' || p.status === 'overdue')
+    .reduce((s, p) => s + Math.round(p.amountDue * 100), 0);
+  const gapC = Math.round(loan.remainingBalance * 100) - openC;
+  return Math.abs(gapC) > 100 * loanPayments.length ? gapC / 100 : 0;
+}
+
 function PaymentSchedule({ loan, loanPayments, loadingPayments, amountInputs, payingIds, onMarkPaid, onMarkUnpaid, onAmountChange }) {
+  const gap = loadingPayments[loan._id] || loanPayments.length === 0 ? 0 : scheduleGap(loan, loanPayments);
   return (
     <div style={{ borderTop: '1px solid var(--color-border)', background: '#FAFBFF' }}>
       <div style={{ padding: '10px 20px 6px', fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         Payment Schedule
       </div>
+
+      {gap !== 0 && (
+        <div role="alert" style={{ margin: '4px 20px 10px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 'var(--radius-sm)', padding: '10px 14px', fontSize: 12, color: '#92400E', lineHeight: 1.5 }}>
+          ⚠ The open weeks add up to {formatCurrency(loan.remainingBalance - gap)}, but the remaining balance is {formatCurrency(loan.remainingBalance)}
+          {' '}({gap > 0 ? `${formatCurrency(gap)} is not on any week` : `the weeks ask for ${formatCurrency(-gap)} more than is owed`}).
+          {' '}This was left by an older version of the system. Payments will not move it onto a week; an admin must correct this loan (loan check).
+        </div>
+      )}
 
       {loadingPayments[loan._id] ? (
         <div style={{ padding: '20px', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>Loading payments…</div>
