@@ -3,7 +3,10 @@
  * Run with:  npm run seed   (inside /server)
  */
 require('dotenv').config();
+require('./config/timezone');
 const { sequelize, User, Member, Loan, Payment, Group, PasswordReset } = require('./models');
+const { buildSchedule, deriveLoanStatus } = require('./services/loanMath');
+const { todayLocal, addDays, localMidnight } = require('./utils/dates');
 
 const seed = async () => {
   if (process.env.NODE_ENV === 'production') {
@@ -51,77 +54,38 @@ const seed = async () => {
   }
   console.log(`👥 ${members.length} members created`);
 
-  // ── Helper: generate payment schedule ───────────────────
-  const makeSchedule = (loanId, startDate, monthly, duration) => {
-    const payments = [];
-    const start = new Date(startDate);
-    for (let i = 1; i <= duration; i++) {
-      const due = new Date(start);
-      due.setMonth(due.getMonth() + i);
-      payments.push({ loanId, monthNumber: i, amountDue: monthly, amountPaid: 0, dueDate: due, paidAt: null, status: 'pending' });
-    }
-    return payments;
+  // ── Loans: weekly schedules built exactly like the app does (services/loanMath) ──
+  // Start dates are relative to today, so the demo always has paid, due and overdue weeks.
+  const today = todayLocal();
+  const makeLoan = async ({ member, loanAmount, weeks, startedWeeksAgo, paidWeeks, interestRate = 30 }) => {
+    const totalRepayable = loanAmount * (1 + interestRate / 100);
+    const startDate = addDays(today, -7 * startedWeeksAgo);
+    const rows = buildSchedule({ loanId: null, startDate, totalRepayable, weeks });
+    const loan = await Loan.create({
+      memberId: member.id, loanAmount, interestRate, loanDuration: weeks, startDate,
+      monthlyInstallment: rows[0].amountDue, totalRepayable, paidAmount: 0, remainingBalance: totalRepayable,
+      status: 'active', createdBy: admin.id,
+    });
+    const payments = rows.map((r, i) => {
+      const paid = i < paidWeeks;
+      return {
+        ...r, loanId: loan.id,
+        status: paid ? 'paid' : (r.dueDate < today ? 'overdue' : 'pending'),
+        amountPaid: paid ? r.amountDue : 0,
+        paidAt: paid ? localMidnight(r.dueDate) : null,
+      };
+    });
+    await Payment.bulkCreate(payments);
+    const paidAmount = payments.filter((p) => p.status === 'paid').reduce((sum, p) => sum + p.amountPaid, 0);
+    const remainingBalance = totalRepayable - paidAmount;
+    await loan.update({ paidAmount, remainingBalance, status: deriveLoanStatus({ remainingBalance, rows: payments, today }) });
   };
 
-  // ── Loan 1 — Kamal Perera (active, 4 paid) ──────────────
-  const loan1 = await Loan.create({
-    memberId: members[0].id, loanAmount: 50000, interestRate: 30, loanDuration: 12,
-    startDate: '2025-02-01', monthlyInstallment: 5417, totalRepayable: 65000,
-    paidAmount: 21668, remainingBalance: 43332, status: 'active', createdBy: admin.id,
-  });
-  const p1 = makeSchedule(loan1.id, '2025-02-01', 5417, 12);
-  p1[0] = { ...p1[0], status: 'paid', amountPaid: 5417, paidAt: new Date('2025-03-05') };
-  p1[1] = { ...p1[1], status: 'paid', amountPaid: 5417, paidAt: new Date('2025-04-03') };
-  p1[2] = { ...p1[2], status: 'paid', amountPaid: 5417, paidAt: new Date('2025-05-02') };
-  p1[3] = { ...p1[3], status: 'paid', amountPaid: 5417, paidAt: new Date('2025-06-04') };
-  await Payment.bulkCreate(p1);
-
-  // ── Loan 2 — Nimal Silva (completed) ────────────────────
-  const loan2 = await Loan.create({
-    memberId: members[1].id, loanAmount: 30000, interestRate: 30, loanDuration: 6,
-    startDate: '2025-01-15', monthlyInstallment: 6500, totalRepayable: 39000,
-    paidAmount: 39000, remainingBalance: 0, status: 'completed', createdBy: admin.id,
-  });
-  const p2 = makeSchedule(loan2.id, '2025-01-15', 6500, 6);
-  const p2Paid = p2.map((p, i) => {
-    const d = new Date('2025-01-15');
-    d.setMonth(d.getMonth() + i + 1);
-    return { ...p, status: 'paid', amountPaid: 6500, paidAt: d };
-  });
-  await Payment.bulkCreate(p2Paid);
-
-  // ── Loan 3 — Sunil Fernando (overdue) ───────────────────
-  const loan3 = await Loan.create({
-    memberId: members[2].id, loanAmount: 75000, interestRate: 30, loanDuration: 18,
-    startDate: '2025-01-01', monthlyInstallment: 5417, totalRepayable: 97500,
-    paidAmount: 10834, remainingBalance: 86666, status: 'overdue', createdBy: admin.id,
-  });
-  const p3 = makeSchedule(loan3.id, '2025-01-01', 5417, 18);
-  p3[0] = { ...p3[0], status: 'paid', amountPaid: 5417, paidAt: new Date('2025-02-05') };
-  p3[1] = { ...p3[1], status: 'paid', amountPaid: 5417, paidAt: new Date('2025-03-04') };
-  p3[2] = { ...p3[2], status: 'overdue' };
-  await Payment.bulkCreate(p3);
-
-  // ── Loan 4 — Anura Bandara (active) ─────────────────────
-  const loan4 = await Loan.create({
-    memberId: members[3].id, loanAmount: 20000, interestRate: 30, loanDuration: 6,
-    startDate: '2025-03-01', monthlyInstallment: 4333, totalRepayable: 26000,
-    paidAmount: 8666, remainingBalance: 17334, status: 'active', createdBy: admin.id,
-  });
-  const p4 = makeSchedule(loan4.id, '2025-03-01', 4333, 6);
-  p4[0] = { ...p4[0], status: 'paid', amountPaid: 4333, paidAt: new Date('2025-04-03') };
-  p4[1] = { ...p4[1], status: 'paid', amountPaid: 4333, paidAt: new Date('2025-05-02') };
-  await Payment.bulkCreate(p4);
-
-  // ── Loan 5 — Chamara Wickrama (active) ──────────────────
-  const loan5 = await Loan.create({
-    memberId: members[4].id, loanAmount: 40000, interestRate: 30, loanDuration: 10,
-    startDate: '2025-04-01', monthlyInstallment: 5200, totalRepayable: 52000,
-    paidAmount: 5200, remainingBalance: 46800, status: 'active', createdBy: admin.id,
-  });
-  const p5 = makeSchedule(loan5.id, '2025-04-01', 5200, 10);
-  p5[0] = { ...p5[0], status: 'paid', amountPaid: 5200, paidAt: new Date('2025-05-05') };
-  await Payment.bulkCreate(p5);
+  await makeLoan({ member: members[0], loanAmount: 50000, weeks: 12, startedWeeksAgo: 4, paidWeeks: 4 });  // active, up to date
+  await makeLoan({ member: members[1], loanAmount: 30000, weeks: 6,  startedWeeksAgo: 8, paidWeeks: 6 });  // completed
+  await makeLoan({ member: members[2], loanAmount: 75000, weeks: 18, startedWeeksAgo: 6, paidWeeks: 2 });  // overdue
+  await makeLoan({ member: members[3], loanAmount: 20000, weeks: 6,  startedWeeksAgo: 2, paidWeeks: 2 });  // active
+  await makeLoan({ member: members[4], loanAmount: 40000, weeks: 10, startedWeeksAgo: 1, paidWeeks: 1 });  // active
 
   console.log('💳 5 loans + payment schedules created');
   console.log('\n✅ Seed complete! You can now start the server.');

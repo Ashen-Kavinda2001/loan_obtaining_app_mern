@@ -8,6 +8,7 @@ import client from '../api/client';
 import { useIsAdmin } from '../auth';
 import { useEscapeKey } from '../components/useEscapeKey';
 import Pagination from '../components/Pagination';
+import ErrorSnack from '../components/ErrorSnack';
 
 const PAGE_SIZE = 25; // members per page
 
@@ -53,6 +54,7 @@ export default function MemberList() {
   const [editMember, setEditMember]       = useState(null);
   const [deleteId, setDeleteId]           = useState(null);
   const [saving, setSaving]               = useState(false);
+  const [errMsg, setErrMsg]               = useState(''); // replaces alert()
   const isAdmin = useIsAdmin(); // renaming/deleting groups and editing/deleting members is admin-only
 
   // ── Fetch groups ─────────────────────────────────────────────
@@ -136,7 +138,7 @@ export default function MemberList() {
       setGroups(prev => prev.map(g => g._id === data._id ? data : g));
       if (selectedGroup && selectedGroup._id === data._id) setSelectedGroup(data);
       setEditGroup(null);
-    } catch (err) { alert(err.response?.data?.message || 'Failed to rename'); }
+    } catch (err) { setErrMsg(err.response?.data?.message || 'Failed to rename'); }
     finally { setSaving(false); }
   };
 
@@ -146,7 +148,7 @@ export default function MemberList() {
       setGroups(prev => prev.filter(g => g._id !== deleteGroupId));
       setDeleteGroupId(null);
       fetchGroups();
-    } catch (err) { alert(err.response?.data?.message || 'Failed to delete'); }
+    } catch (err) { setErrMsg(err.response?.data?.message || 'Failed to delete'); }
   };
 
   // ── Member CRUD ──────────────────────────────────────────────
@@ -158,7 +160,7 @@ export default function MemberList() {
       setEditMember(null);
       fetchMembers(selectedGroup, { page: paging.page, q: query.trim() }); // the edit may move it in the list
       fetchGroups(); // refresh counts
-    } catch (err) { alert(err.response?.data?.message || 'Failed to update'); }
+    } catch (err) { setErrMsg(err.response?.data?.message || 'Failed to update'); }
     finally { setSaving(false); }
   };
 
@@ -170,7 +172,7 @@ export default function MemberList() {
       const page = members.length === 1 && paging.page > 1 ? paging.page - 1 : paging.page;
       fetchMembers(selectedGroup, { page, q: query.trim() });
       fetchGroups();
-    } catch (err) { alert(err.response?.data?.message || 'Failed to delete member'); }
+    } catch (err) { setErrMsg(err.response?.data?.message || 'Failed to delete member'); }
   };
 
   // ── Derived lists ────────────────────────────────────────────
@@ -183,6 +185,7 @@ export default function MemberList() {
   // ─────────────────────────────────────────────────────────────
   return (
     <div className="page-content">
+      <ErrorSnack message={errMsg} onClose={() => setErrMsg('')} />
 
       {/* ── Header ── */}
       <div style={{ marginBottom: 20 }}>
@@ -449,7 +452,7 @@ export default function MemberList() {
             </div>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>Delete Member?</div>
             <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
-              This will permanently remove the member and all associated records.
+              This removes the member. A member who has loans (even deleted ones, kept for audit) can't be deleted.
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
