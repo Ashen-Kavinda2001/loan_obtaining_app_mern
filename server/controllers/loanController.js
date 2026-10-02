@@ -3,6 +3,7 @@ const { sequelize, Loan, Member, Payment } = require('../models');
 const { buildSchedule, toCents } = require('../services/loanMath');
 const { todayLocal, monthRange, startOfWeek, addDays, localMidnight, toLocalDateString } = require('../utils/dates');
 const httpError = require('../utils/httpError');
+const { pagingFrom, pageResult } = require('../utils/paging');
 
 // Payments that are real cash events: auto-paid rows only mirror part of another row's cash (B5)
 const CASH_RECEIPTS = `p.status = 'paid' AND (p.isAutoPaid = 0 OR p.isAutoPaid IS NULL)`;
@@ -42,7 +43,7 @@ const getLoans = async (req, res, next) => {
     ]);
 
     // Flatten for frontend compatibility
-    const result = loans.map((l) => ({
+    let result = loans.map((l) => ({
       _id:                l.id,
       id:                 l.id,
       memberId:           l.member ? l.member.id : l.memberId,
@@ -60,7 +61,30 @@ const getLoans = async (req, res, next) => {
       grantedAt:          l.createdAt,
     }));
 
-    res.json(result);
+    // ?q= searches member name, NIC and village. Filtering happens here, after the status is
+    // worked out, so "overdue" means exactly what the rest of the app shows.
+    const { q, status } = req.valid.query;
+    if (q) {
+      const needle = q.toLowerCase();
+      const nicOf = new Map(loans.map((l) => [l.id, l.member ? l.member.idNumber || '' : '']));
+      result = result.filter((l) =>
+        [l.memberName, l.memberVillage, nicOf.get(l.id)].some((v) => String(v || '').toLowerCase().includes(needle)));
+    }
+
+    const paging = pagingFrom(req.valid.query);
+    if (!paging) {
+      return res.json(status && status !== 'all' ? result.filter((l) => l.status === status) : result);
+    }
+
+    // Paged: the unit is a MEMBER (the Loan Details page shows each member's loans together), so a
+    // member's loans never split across two pages. `total` counts members; `counts` feeds the tabs.
+    const counts = { all: result.length, active: 0, completed: 0, overdue: 0 };
+    for (const l of result) counts[l.status] = (counts[l.status] || 0) + 1;
+    if (status && status !== 'all') result = result.filter((l) => l.status === status);
+
+    const memberOrder = [...new Set(result.map((l) => l.memberId))]; // newest loan first
+    const onPage = new Set(memberOrder.slice(paging.offset, paging.offset + paging.limit));
+    res.json(pageResult(result.filter((l) => onPage.has(l.memberId)), memberOrder.length, paging, { counts }));
   } catch (err) {
     next(err);
   }

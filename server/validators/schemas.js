@@ -114,6 +114,31 @@ const collectionsQuery = z.object({
       .max(26, { error: 'weeks must be between 1 and 26' })),
 });
 
+// ── Lists: pagination and search ───────────────────────────────────────────
+// All optional. Without `page` the list endpoints return the plain array they always returned,
+// so callers that need everything (dashboard, Grant Loan dropdown) are unaffected.
+
+const blankToUndefined = (v) => (v === undefined || v === null || (typeof v === 'string' && v.trim() === '') ? undefined : v);
+const optionalInt = (label, min, max) => z.preprocess((v) => toNumber(blankToUndefined(v)),
+  z.number({ error: `${label} must be a number` })
+    .int({ error: `${label} must be a whole number` })
+    .min(min, { error: `${label} must be between ${min} and ${max}` })
+    .max(max, { error: `${label} must be between ${min} and ${max}` })
+    .optional());
+
+const listQuery = {
+  q:     z.preprocess((v) => trimmed(blankToUndefined(v)),
+    z.string({ error: 'Search text must be text' }).max(100, { error: 'Search text must be at most 100 characters' }).optional()),
+  page:  optionalInt('page', 1, 100_000),
+  limit: optionalInt('limit', 1, 100),
+};
+
+const membersQuery = z.object(listQuery); // groupId / ungrouped are read by the controller as before
+const loansQuery = z.object({
+  ...listQuery,
+  status: z.preprocess(blankToUndefined, z.enum(['all', 'active', 'completed', 'overdue'], { error: 'Unknown status' }).optional()),
+});
+
 // ── Payments ───────────────────────────────────────────────────────────────
 
 const paymentsQuery = z.object({ loanId: id('loanId query param') });
@@ -128,6 +153,8 @@ module.exports = {
   loanCreate,
   loanDelete,
   collectionsQuery,
+  membersQuery,
+  loansQuery,
   paymentsQuery,
   markPaidBody,
 };
