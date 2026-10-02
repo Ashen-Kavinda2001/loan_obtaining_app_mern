@@ -259,7 +259,7 @@ export default function RegisterMember() {
               {/* Show selected group name */}
               {form.groupId && !showNewGroup && (
                 <div style={{ marginTop: 6, fontSize: 12, color: '#4F46E5', fontWeight: 600 }}>
-                  ✓ Assigning to: {groups.find(g => g._id === form.groupId)?.name}
+                  ✓ Assigning to: {groups.find(g => String(g._id) === String(form.groupId))?.name}
                 </div>
               )}
             </div>

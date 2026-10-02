@@ -102,15 +102,9 @@ export default function App() {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && localStorage.getItem('fgi_token')) {
-        client.get('/ping').catch((err) => {
-          // If session expired while app was in background, force re-login
-          if (err.response?.status === 401) {
-            localStorage.removeItem('fgi_token');
-            localStorage.removeItem('fgi_user');
-            setIsLoggedIn(false);
-            setUser(null);
-          }
-        });
+        // Only wakes the connection; /ping needs no login (an expired session shows up as a 401
+        // on the next real request, which the API client handles)
+        client.get('/ping').catch(() => {});
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);

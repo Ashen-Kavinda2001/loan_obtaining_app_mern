@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { ChevronDown, ChevronUp, CheckCircle, RotateCcw, Search, CreditCard, Trash2, AlertTriangle, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, CheckCircle, RotateCcw, Search, CreditCard, Trash2, AlertTriangle } from 'lucide-react';
 import client from '../api/client';
 import { formatCurrency } from '../data/demoData';
 import { useIsAdmin } from '../auth';
 import { useEscapeKey } from '../components/useEscapeKey';
 import Pagination from '../components/Pagination';
 import SmsReceipts from '../components/SmsReceipts';
+import ErrorSnack from '../components/ErrorSnack';
 
 // One key per payment attempt; the server returns the original result if it sees the same key again
 const newIdempotencyKey = () =>
@@ -108,31 +109,6 @@ function ConfirmModal({ title, message, confirmLabel = 'Confirm', danger = false
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────
-   ErrorSnack — replaces alert() for API errors
-   ───────────────────────────────────────────────────────────── */
-function ErrorSnack({ message, onClose }) {
-  if (!message) return null;
-  return (
-    <div style={{
-      position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-      zIndex: 999, display: 'flex', alignItems: 'center', gap: 10,
-      background: '#1E293B', color: '#fff',
-      padding: '12px 18px', borderRadius: 10,
-      boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
-      fontSize: 13, fontWeight: 500,
-      animation: 'slideUp 0.2s ease',
-      maxWidth: 'calc(100vw - 48px)',
-    }}>
-      <AlertTriangle size={15} color="#F87171" style={{ flexShrink: 0 }} />
-      <span style={{ flex: 1 }}>{message}</span>
-      <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 2, display:'flex' }}>
-        <X size={14} />
-      </button>
     </div>
   );
 }
@@ -536,9 +512,10 @@ function MemberLoanGroup({ group, expanded, payments, loadingPayments, amountInp
         {loans.map((loan, loanIdx) => {
           const loanPayments = payments[loan._id] || [];
           const isExpanded   = expanded === loan._id;
+          // From the loan's own totals, so it is right before the schedule is opened (B: progress at 0%)
+          const progress     = loan.totalRepayable > 0 ? Math.min(100, (loan.paidAmount / loan.totalRepayable) * 100) : 0;
+          const scheduleLoaded = loanPayments.length > 0;
           const paidWeeks    = loanPayments.filter(p => p.status === 'paid').length;
-          // An unpaid shortfall on the last week adds an extension week, so cap at 100%
-          const progress     = loan.loanDuration > 0 ? Math.min(100, (paidWeeks / loan.loanDuration) * 100) : 0;
 
           return (
             <div key={loan._id} style={{
@@ -628,7 +605,7 @@ function MemberLoanGroup({ group, expanded, payments, loadingPayments, amountInp
                 {/* Progress bar */}
                 <div style={{ marginTop: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4 }}>
-                    <span>{paidWeeks} of {loan.loanDuration} weeks paid</span>
+                    <span>{formatCurrency(loan.paidAmount)} of {formatCurrency(loan.totalRepayable)} paid{scheduleLoaded && ` · ${paidWeeks} of ${loanPayments.length} weeks`}</span>
                     <span>{Math.round(progress)}%</span>
                   </div>
                   <div style={{ height: 6, background: '#F1F5F9', borderRadius: 100, overflow: 'hidden' }}>
