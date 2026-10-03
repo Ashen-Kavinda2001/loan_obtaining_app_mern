@@ -134,6 +134,8 @@ app.use(globalLimiter);
 
 app.use(cookieParser());
 
+// Data sent in the X-Body header (HTTP/2 workaround for the host, see middleware/headerBody.js)
+app.use(require('./middleware/headerBody'));
 // Body parser with size limits to protect against memory exhaustion DoS
 app.use(express.json({ limit: '10kb' }));
 app.use((req, res, next) => {

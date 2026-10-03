@@ -18,11 +18,34 @@ const client = axios.create({
   timeout: 45000,
 });
 
+// HTTP/2 workaround: the host's LiteSpeed does not pass request BODIES to Node over HTTP/2 (which
+// phones use), so such requests hang until the 45 s timeout. Requests without a body pass, so small
+// JSON payloads travel base64url-encoded in the X-Body header instead (server/middleware/headerBody.js).
+// Larger payloads still go as a normal body. Remove both parts once the host fixes HTTP/2 bodies.
+const WRITE_METHODS = ['post', 'put', 'patch', 'delete'];
+const MAX_HEADER_BODY = 6000; // characters, well under typical 8–16 KB header limits
+
+const toBase64Url = (text) => {
+  let binary = '';
+  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte); // UTF-8 safe (Sinhala names)
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+
+const isPlainObject = (value) => value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
+
 // Automatically attach Bearer token from localStorage (works across all browsers, PWAs, & devices)
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem('fgi_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+
+  if (WRITE_METHODS.includes((config.method || 'get').toLowerCase()) && isPlainObject(config.data)) {
+    const encoded = toBase64Url(JSON.stringify(config.data));
+    if (encoded.length <= MAX_HEADER_BODY) {
+      config.headers['X-Body'] = encoded;
+      config.data = undefined;
+    }
   }
   return config;
 });
