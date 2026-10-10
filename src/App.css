@@ -133,7 +133,7 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #818CF8, #4F46E5);
+  background: #4F46E5;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -245,7 +245,7 @@
 .topbar-avatar {
   width: 34px; height: 34px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #818CF8, #4F46E5);
+  background: #4F46E5;
   color: #fff; font-weight: 700; font-size: 14px;
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;

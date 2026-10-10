@@ -98,11 +98,10 @@ const loanCreate = z.object({
     .refine((d) => d >= '2000-01-01' && d <= '2099-12-31', { error: 'Start date is out of range' }),
 });
 
+// A reason is optional: only completed loans can be deleted, so none is asked for in the app
 const loanDelete = z.object({
-  reason: z.preprocess(trimmed,
-    z.string({ error: 'A reason for deleting the loan is required' })
-      .min(3, { error: 'A reason for deleting the loan is required (at least 3 characters)' })
-      .max(255, { error: 'Reason must be at most 255 characters' })),
+  reason: z.preprocess((v) => trimmed(v) || undefined,
+    z.string().max(255, { error: 'Reason must be at most 255 characters' }).optional()),
 });
 
 const collectionsQuery = z.object({

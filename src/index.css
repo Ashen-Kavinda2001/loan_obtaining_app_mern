@@ -10,10 +10,10 @@
   --color-sidebar-hover: #312E81;
   --color-primary:     #4F46E5;
   --color-primary-hover:#4338CA;
-  --color-success:     #10B981;
-  --color-warning:     #F59E0B;
+  --color-success:     #4F46E5; /* the system uses only blue, red, black and white */
+  --color-warning:     #DC2626;
   --color-danger:      #EF4444;
-  --color-info:        #3B82F6;
+  --color-info:        #4F46E5;
   --color-text:        #0F172A;
   --color-text-muted:  #64748B;
   --color-border:      #E2E8F0;
@@ -128,7 +128,7 @@ img { max-width: 100%; }
   background: var(--color-success);
   color: #fff;
 }
-.btn-success:hover { background: #059669; }
+.btn-success:hover { background: #4338CA; }
 
 .btn-danger {
   background: var(--color-danger);
@@ -166,11 +166,12 @@ img { max-width: 100%; }
   text-transform: capitalize;
 }
 
-.badge-active    { background: #D1FAE5; color: #065F46; }
-.badge-completed { background: #DBEAFE; color: #1E40AF; }
-.badge-overdue   { background: #FEE2E2; color: #991B1B; }
-.badge-pending   { background: #FEF3C7; color: #92400E; }
-.badge-paid      { background: #D1FAE5; color: #065F46; }
+/* Status colors use only blue, red, black and white: red marks what needs attention */
+.badge-active    { background: #EEF2FF; color: #4338CA; }
+.badge-completed { background: #F1F5F9; color: #0F172A; }
+.badge-overdue   { background: #FEE2E2; color: #B91C1C; }
+.badge-pending   { background: #FFFFFF; color: #0F172A; border: 1px solid #CBD5E1; }
+.badge-paid      { background: #EEF2FF; color: #4338CA; }
 
 /* ============================================
    FORM ELEMENTS

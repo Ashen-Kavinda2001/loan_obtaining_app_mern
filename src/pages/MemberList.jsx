@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search, Edit2, Trash2, UserPlus, Users, ChevronRight,
-  ArrowLeft, Pencil, X, Check, FolderOpen
+  ArrowLeft, Pencil, X, Check, FolderOpen, AlertTriangle
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import client from '../api/client';
@@ -11,22 +11,14 @@ import Pagination from '../components/Pagination';
 
 const PAGE_SIZE = 25; // members per page
 
-const GROUP_GRADIENTS = [
-  'linear-gradient(135deg,#4F46E5,#818CF8)',
-  'linear-gradient(135deg,#059669,#34D399)',
-  'linear-gradient(135deg,#D97706,#FCD34D)',
-  'linear-gradient(135deg,#DC2626,#F87171)',
-  'linear-gradient(135deg,#7C3AED,#C4B5FD)',
-  'linear-gradient(135deg,#0891B2,#67E8F9)',
-  'linear-gradient(135deg,#DB2777,#F9A8D4)',
-  'linear-gradient(135deg,#65A30D,#BEF264)',
-];
+// The system's colors are blue, red, black and white; every group card uses the same blue
+const GROUP_COLOR = '#4F46E5';
 
 function Avatar({ name, size = 36 }) {
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%', flexShrink: 0,
-      background: 'linear-gradient(135deg,#4F46E5,#818CF8)',
+      background: '#4F46E5',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       color: '#fff', fontWeight: 700, fontSize: size * 0.38,
     }}>
@@ -53,6 +45,7 @@ export default function MemberList() {
   const [editMember, setEditMember]       = useState(null);
   const [deleteId, setDeleteId]           = useState(null);
   const [saving, setSaving]               = useState(false);
+  const [notice, setNotice]               = useState(null); // { title, message }: replaces alert()
   const isAdmin = useIsAdmin(); // renaming/deleting groups and editing/deleting members is admin-only
 
   // ── Fetch groups ─────────────────────────────────────────────
@@ -136,7 +129,7 @@ export default function MemberList() {
       setGroups(prev => prev.map(g => g._id === data._id ? data : g));
       if (selectedGroup && selectedGroup._id === data._id) setSelectedGroup(data);
       setEditGroup(null);
-    } catch (err) { alert(err.response?.data?.message || 'Failed to rename'); }
+    } catch (err) { setNotice({ title: 'Could not rename the group', message: err.response?.data?.message || 'Failed to rename' }); }
     finally { setSaving(false); }
   };
 
@@ -146,7 +139,10 @@ export default function MemberList() {
       setGroups(prev => prev.filter(g => g._id !== deleteGroupId));
       setDeleteGroupId(null);
       fetchGroups();
-    } catch (err) { alert(err.response?.data?.message || 'Failed to delete'); }
+    } catch (err) {
+      setDeleteGroupId(null);
+      setNotice({ title: 'Could not delete the group', message: err.response?.data?.message || 'Failed to delete' });
+    }
   };
 
   // ── Member CRUD ──────────────────────────────────────────────
@@ -158,7 +154,7 @@ export default function MemberList() {
       setEditMember(null);
       fetchMembers(selectedGroup, { page: paging.page, q: query.trim() }); // the edit may move it in the list
       fetchGroups(); // refresh counts
-    } catch (err) { alert(err.response?.data?.message || 'Failed to update'); }
+    } catch (err) { setNotice({ title: 'Could not save the member', message: err.response?.data?.message || 'Failed to update' }); }
     finally { setSaving(false); }
   };
 
@@ -170,7 +166,10 @@ export default function MemberList() {
       const page = members.length === 1 && paging.page > 1 ? paging.page - 1 : paging.page;
       fetchMembers(selectedGroup, { page, q: query.trim() });
       fetchGroups();
-    } catch (err) { alert(err.response?.data?.message || 'Failed to delete member'); }
+    } catch (err) {
+      setDeleteId(null);
+      setNotice({ title: 'This member cannot be deleted', message: err.response?.data?.message || 'Failed to delete member' });
+    }
   };
 
   // ── Derived lists ────────────────────────────────────────────
@@ -278,11 +277,11 @@ export default function MemberList() {
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))', gap: 14 }}>
-            {filteredGroups.map((g, idx) => (
+            {filteredGroups.map(g => (
               <GroupCard
                 key={g._id}
                 group={g}
-                gradient={GROUP_GRADIENTS[idx % GROUP_GRADIENTS.length]}
+                color={GROUP_COLOR}
                 onClick={() => enterGroup(g)}
                 onEdit={isAdmin ? () => { setEditGroup(g); setEditGroupName(g.name); } : null}
                 onDelete={isAdmin ? () => setDeleteGroupId(g._id) : null}
@@ -458,13 +457,27 @@ export default function MemberList() {
           </div>
         </Modal>
       )}
+
+      {/* Error message (replaces the browser's alert popup) */}
+      {notice && (
+        <Modal onClose={() => setNotice(null)} title="">
+          <div style={{ textAlign: 'center', padding: '0 0 16px' }}>
+            <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+              <AlertTriangle size={22} color="#DC2626" />
+            </div>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>{notice.title}</div>
+            <div style={{ color: 'var(--color-text-muted)', fontSize: 13, lineHeight: 1.5 }}>{notice.message}</div>
+          </div>
+          <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setNotice(null)} autoFocus>OK</button>
+        </Modal>
+      )}
     </div>
   );
 }
 
 /* ── Sub-components ─────────────────────────────────────────── */
 
-function GroupCard({ group, gradient, onClick, onEdit, onDelete }) {
+function GroupCard({ group, color, onClick, onEdit, onDelete }) {
   return (
     <div style={{
       background: 'var(--color-bg-card)', border: '1px solid var(--color-border)',
@@ -475,12 +488,12 @@ function GroupCard({ group, gradient, onClick, onEdit, onDelete }) {
       onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 20px var(--color-shadow)'; }}
       onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 4px var(--color-shadow)'; }}
     >
-      {/* Gradient banner */}
-      <div style={{ height: 6, background: gradient }} />
+      {/* Color banner */}
+      <div style={{ height: 6, background: color }} />
 
       <div style={{ padding: '16px 16px 14px' }} onClick={onClick}>
         <div style={{
-          width: 44, height: 44, borderRadius: 10, background: gradient,
+          width: 44, height: 44, borderRadius: 10, background: color,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           color: '#fff', fontWeight: 800, fontSize: 18, marginBottom: 12,
         }}>
@@ -559,7 +572,7 @@ function MembersTable({ members, offset = 0, query, loading, showGroup, onEdit, 
                 <td style={{ color: 'var(--color-text-muted)' }}>{offset + i + 1}</td>
                 <td>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(135deg,#4F46E5,#818CF8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 700 }}>
+                    <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#4F46E5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 700 }}>
                       {m.fullName.charAt(0)}
                     </div>
                     <span style={{ fontWeight: 600 }}>{m.fullName}</span>

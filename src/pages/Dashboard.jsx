@@ -75,8 +75,8 @@ export default function Dashboard() {
         </div>
 
         <div className="stat-card">
-          <div className="stat-icon" style={{ background: '#D1FAE5' }}>
-            <CreditCard size={22} color="#10B981" />
+          <div className="stat-icon" style={{ background: '#EEF2FF' }}>
+            <CreditCard size={22} color="#4F46E5" />
           </div>
           <div className="stat-info">
             <div className="stat-label">Active Loans</div>
@@ -86,8 +86,8 @@ export default function Dashboard() {
         </div>
 
         <div className="stat-card">
-          <div className="stat-icon" style={{ background: '#FEF3C7' }}>
-            <DollarSign size={22} color="#F59E0B" />
+          <div className="stat-icon" style={{ background: '#F1F5F9' }}>
+            <DollarSign size={22} color="#0F172A" />
           </div>
           <div className="stat-info">
             <div className="stat-label">Total Lent</div>
@@ -97,8 +97,8 @@ export default function Dashboard() {
         </div>
 
         <div className="stat-card">
-          <div className="stat-icon" style={{ background: '#DCFCE7' }}>
-            <CheckCircle size={22} color="#16A34A" />
+          <div className="stat-icon" style={{ background: '#EEF2FF' }}>
+            <CheckCircle size={22} color="#4F46E5" />
           </div>
           <div className="stat-info">
             <div className="stat-label">Received from Members</div>
@@ -155,9 +155,9 @@ export default function Dashboard() {
                 <div style={{
                   width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: '#D1FAE5'
+                  background: '#EEF2FF'
                 }}>
-                  <CheckCircle size={15} color="#10B981" />
+                  <CheckCircle size={15} color="#4F46E5" />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{act.member}</div>

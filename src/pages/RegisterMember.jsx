@@ -124,13 +124,13 @@ export default function RegisterMember() {
 
         {success && submitted && (
           <div style={{
-            background: '#D1FAE5', border: '1px solid #6EE7B7', borderRadius: 'var(--radius-md)',
+            background: '#EEF2FF', border: '1px solid #C7D2FE', borderRadius: 'var(--radius-md)',
             padding: '16px 20px', marginBottom: 24, display: 'flex', alignItems: 'flex-start', gap: 12
           }}>
-            <CheckCircle size={20} color="#10B981" style={{ flexShrink: 0, marginTop: 1 }} />
+            <CheckCircle size={20} color="#4F46E5" style={{ flexShrink: 0, marginTop: 1 }} />
             <div>
-              <div style={{ fontWeight: 700, color: '#065F46', marginBottom: 2 }}>Member Registered Successfully!</div>
-              <div style={{ fontSize: 13, color: '#065F46' }}>
+              <div style={{ fontWeight: 700, color: '#3730A3', marginBottom: 2 }}>Member Registered Successfully!</div>
+              <div style={{ fontSize: 13, color: '#3730A3' }}>
                 <strong>{submitted.fullName}</strong> from {submitted.village} has been added
                 {(submitted.groupDetails?.name || submitted.groupId?.name)
                   ? <> to group <strong>{submitted.groupDetails?.name || submitted.groupId?.name}</strong></>
@@ -138,7 +138,7 @@ export default function RegisterMember() {
               </div>
               <button
                 className="btn btn-sm"
-                style={{ marginTop: 8, color: '#059669', background: 'transparent', padding: 0, fontSize: 13 }}
+                style={{ marginTop: 8, color: '#4F46E5', background: 'transparent', padding: 0, fontSize: 13 }}
                 onClick={() => {
                   setSuccess(false);
                   setSubmitted(null);
