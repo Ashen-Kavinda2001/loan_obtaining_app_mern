@@ -33,11 +33,9 @@ function describeOverpayment(rows, target, amount) {
 
 /* ─────────────────────────────────────────────────────────────
    ConfirmModal — replaces window.confirm() with a styled dialog.
-   With `prompt`, it also asks for text (e.g. a reason) and passes it to onConfirm.
+   Red for destructive actions, blue for everything else.
    ───────────────────────────────────────────────────────────── */
-function ConfirmModal({ title, message, confirmLabel = 'Confirm', danger = false, prompt = null, onConfirm, onCancel }) {
-  const [value, setValue] = useState('');
-  const canConfirm = !prompt || value.trim().length >= (prompt.minLength || 1);
+function ConfirmModal({ title, message, confirmLabel = 'Confirm', danger = false, onConfirm, onCancel }) {
   useEscapeKey(onCancel); // Escape = Cancel
   return (
     <div style={{
@@ -56,31 +54,16 @@ function ConfirmModal({ title, message, confirmLabel = 'Confirm', danger = false
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 12 }}>
           <div style={{
             width: 42, height: 42, borderRadius: 10, flexShrink: 0,
-            background: danger ? '#FEF2F2' : '#FFF7ED',
+            background: danger ? '#FEF2F2' : '#EEF2FF',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-            <AlertTriangle size={20} color={danger ? '#DC2626' : '#D97706'} />
+            <AlertTriangle size={20} color={danger ? '#DC2626' : '#4F46E5'} />
           </div>
           <div>
             <div id="confirm-title" style={{ fontWeight: 700, fontSize: 15, color: '#0F172A', marginBottom: 4 }}>{title}</div>
             <div id="confirm-message" style={{ fontSize: 13, color: '#64748B', lineHeight: 1.5 }}>{message}</div>
           </div>
         </div>
-
-        {prompt && (
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label" htmlFor="confirm-prompt">{prompt.label}</label>
-            <input
-              id="confirm-prompt"
-              className="form-control"
-              autoFocus
-              maxLength={255}
-              placeholder={prompt.placeholder}
-              value={value}
-              onChange={e => setValue(e.target.value)}
-            />
-          </div>
-        )}
 
         {/* Actions */}
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
@@ -95,14 +78,10 @@ function ConfirmModal({ title, message, confirmLabel = 'Confirm', danger = false
             className="btn"
             style={{
               minWidth: 90,
-              background: danger
-                ? 'linear-gradient(135deg,#DC2626,#EF4444)'
-                : 'linear-gradient(135deg,#D97706,#F59E0B)',
+              background: danger ? '#DC2626' : '#4F46E5',
               color: '#fff',
-              opacity: canConfirm ? 1 : 0.5,
             }}
-            disabled={!canConfirm}
-            onClick={() => onConfirm(value.trim())}
+            onClick={onConfirm}
           >
             {confirmLabel}
           </button>
@@ -301,18 +280,20 @@ export default function LoanDetails() {
     });
   };
 
-  // ── Delete a loan (kept on the server for audit, hidden everywhere in the app) ──
-  const deleteLoan = (loanId, memberName) => {
+  // ── Delete a completed or not-yet-paid loan (kept on the server for audit, hidden everywhere in the app) ──
+  const deleteLoan = (loan, memberName) => {
+    const loanId = loan._id;
     setConfirm({
       title:        'Delete Loan',
-      message:      `Delete this loan for ${memberName}? It will disappear from all lists and totals. Its payment history is kept for audit.`,
+      message:      loan.status === 'completed'
+        ? `Delete this completed loan for ${memberName}? It will disappear from all lists and totals. Its payment history is kept for audit.`
+        : `Delete this loan for ${memberName}? No payments have been made on it yet. It will disappear from all lists and totals.`,
       confirmLabel: 'Delete',
       danger:       true,
-      prompt:       { label: 'Reason for deleting', placeholder: 'e.g. Entered for the wrong member', minLength: 3 },
-      onConfirm: async (reason) => {
+      onConfirm: async () => {
         setConfirm(null);
         try {
-          await client.delete(`/loans/${loanId}`, { params: { reason } });
+          await client.delete(`/loans/${loanId}`);
           setPayments(prev => { const n = { ...prev }; delete n[loanId]; return n; });
           if (expanded === loanId) setExpanded(null);
           loadLoans({ quiet: true }); // the page and the tab counts change
@@ -360,7 +341,6 @@ export default function LoanDetails() {
           message={confirm.message}
           confirmLabel={confirm.confirmLabel}
           danger={confirm.danger}
-          prompt={confirm.prompt}
           onConfirm={confirm.onConfirm}
           onCancel={() => setConfirm(null)}
         />
@@ -469,7 +449,7 @@ function MemberLoanGroup({ group, expanded, payments, loadingPayments, amountInp
       <div style={{
         padding: '14px 16px',
         borderBottom: '1px solid var(--color-border)',
-        background: 'linear-gradient(135deg, #F8F9FF 0%, #F0F2FF 100%)',
+        background: '#F8FAFF',
         display: 'flex',
         alignItems: 'center',
         gap: 12,
@@ -478,10 +458,9 @@ function MemberLoanGroup({ group, expanded, payments, loadingPayments, amountInp
         {/* Avatar */}
         <div style={{
           width: 46, height: 46, borderRadius: '50%', flexShrink: 0,
-          background: 'linear-gradient(135deg, #4F46E5, #818CF8)',
+          background: '#4F46E5',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           color: '#fff', fontWeight: 800, fontSize: 18,
-          boxShadow: '0 2px 8px rgba(79,70,229,0.35)',
         }}>
           {memberName.charAt(0).toUpperCase()}
         </div>
@@ -506,7 +485,7 @@ function MemberLoanGroup({ group, expanded, payments, loadingPayments, amountInp
 
           {/* Status pills */}
           {activeCount > 0 && (
-            <span style={{ background: '#D1FAE5', color: '#059669', padding: '3px 9px', borderRadius: 100, fontSize: 11, fontWeight: 700 }}>
+            <span style={{ background: '#EEF2FF', color: '#4338CA', padding: '3px 9px', borderRadius: 100, fontSize: 11, fontWeight: 700 }}>
               {activeCount} Active
             </span>
           )}
@@ -516,7 +495,7 @@ function MemberLoanGroup({ group, expanded, payments, loadingPayments, amountInp
             </span>
           )}
           {completedCount > 0 && (
-            <span style={{ background: '#F1F5F9', color: '#64748B', padding: '3px 9px', borderRadius: 100, fontSize: 11, fontWeight: 700 }}>
+            <span style={{ background: '#F1F5F9', color: '#0F172A', padding: '3px 9px', borderRadius: 100, fontSize: 11, fontWeight: 700 }}>
               {completedCount} Done
             </span>
           )}
@@ -548,9 +527,9 @@ function MemberLoanGroup({ group, expanded, payments, loadingPayments, amountInp
               <div className="loan-card-label-row">
                 <div style={{
                   background: loan.status === 'overdue' ? '#FEE2E2' :
-                               loan.status === 'completed' ? '#D1FAE5' : '#EEF2FF',
+                               loan.status === 'completed' ? '#F1F5F9' : '#EEF2FF',
                   color: loan.status === 'overdue' ? '#DC2626' :
-                          loan.status === 'completed' ? '#059669' : '#4F46E5',
+                          loan.status === 'completed' ? '#0F172A' : '#4F46E5',
                   fontSize: 10, fontWeight: 700,
                   padding: '2px 8px', borderRadius: 100,
                   textTransform: 'uppercase', letterSpacing: '0.05em',
@@ -561,10 +540,11 @@ function MemberLoanGroup({ group, expanded, payments, loadingPayments, amountInp
                 <div style={{ fontSize: 10, color: 'var(--color-text-muted)', flex: 1, minWidth: 0 }}>
                   Granted: {(loan.grantedAt || loan.startDate) ? new Date(loan.grantedAt || loan.startDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                 </div>
-                {isAdmin && <button
+                {/* Only completed loans and loans with no payments yet can be deleted (the server refuses the rest) */}
+                {isAdmin && (loan.status === 'completed' || loan.paidAmount === 0) && <button
                   title="Delete this loan"
                   aria-label={`Delete loan #${loanIdx + 1} of ${memberName}`}
-                  onClick={e => { e.stopPropagation(); onDeleteLoan(loan._id, memberName); }}
+                  onClick={e => { e.stopPropagation(); onDeleteLoan(loan, memberName); }}
                   style={{
                     background: 'none', border: 'none', cursor: 'pointer',
                     color: '#DC2626', padding: '2px 4px', borderRadius: 6,
@@ -599,11 +579,11 @@ function MemberLoanGroup({ group, expanded, payments, loadingPayments, amountInp
                   </div>
                   <div className="loan-stat-item">
                     <span className="loan-stat-label">Interest Rate</span>
-                    <span className="loan-stat-value" style={{ color: '#D97706' }}>{loan.interestRate ?? 30}%</span>
+                    <span className="loan-stat-value">{loan.interestRate ?? 30}%</span>
                   </div>
                   <div className="loan-stat-item">
                     <span className="loan-stat-label">Total Repayable</span>
-                    <span className="loan-stat-value" style={{ color: '#7C3AED', fontWeight: 800 }}>{formatCurrency(loan.totalRepayable)}</span>
+                    <span className="loan-stat-value" style={{ fontWeight: 800 }}>{formatCurrency(loan.totalRepayable)}</span>
                   </div>
                   <div className="loan-stat-item">
                     <span className="loan-stat-label">Weekly</span>
@@ -611,11 +591,11 @@ function MemberLoanGroup({ group, expanded, payments, loadingPayments, amountInp
                   </div>
                   <div className="loan-stat-item">
                     <span className="loan-stat-label">Paid So Far</span>
-                    <span className="loan-stat-value" style={{ color: 'var(--color-success)' }}>{formatCurrency(loan.paidAmount)}</span>
+                    <span className="loan-stat-value">{formatCurrency(loan.paidAmount)}</span>
                   </div>
                   <div className="loan-stat-item">
                     <span className="loan-stat-label">Remaining</span>
-                    <span className="loan-stat-value" style={{ color: loan.remainingBalance > 0 ? 'var(--color-danger)' : 'var(--color-success)' }}>
+                    <span className="loan-stat-value" style={{ color: loan.remainingBalance > 0 ? '#DC2626' : undefined }}>
                       {formatCurrency(loan.remainingBalance)}
                     </span>
                   </div>
@@ -634,8 +614,7 @@ function MemberLoanGroup({ group, expanded, payments, loadingPayments, amountInp
                   <div style={{ height: 6, background: '#F1F5F9', borderRadius: 100, overflow: 'hidden' }}>
                     <div style={{
                       height: '100%', width: `${progress}%`, borderRadius: 100,
-                      background: loan.status === 'overdue' ? 'var(--color-danger)' :
-                                  loan.status === 'completed' ? 'var(--color-success)' : 'var(--color-primary)',
+                      background: loan.status === 'overdue' ? '#DC2626' : '#4F46E5',
                       transition: 'width 0.5s ease'
                     }} />
                   </div>
@@ -669,7 +648,7 @@ function MemberLoanGroup({ group, expanded, payments, loadingPayments, amountInp
 function MarkPaidButton({ paying, onClick, style }) {
   return (
     <button
-      className="btn btn-success btn-sm"
+      className="btn btn-primary btn-sm"
       disabled={paying}
       aria-busy={paying}
       onClick={onClick}
@@ -724,7 +703,7 @@ function PaymentSchedule({ loan, loanPayments, loadingPayments, amountInputs, pa
       </div>
 
       {gap !== 0 && (
-        <div role="alert" style={{ margin: '4px 20px 10px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 'var(--radius-sm)', padding: '10px 14px', fontSize: 12, color: '#92400E', lineHeight: 1.5 }}>
+        <div role="alert" style={{ margin: '4px 20px 10px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 'var(--radius-sm)', padding: '10px 14px', fontSize: 12, color: '#B91C1C', lineHeight: 1.5 }}>
           ⚠ The open weeks add up to {formatCurrency(loan.remainingBalance - gap)}, but the remaining balance is {formatCurrency(loan.remainingBalance)}
           {' '}({gap > 0 ? `${formatCurrency(gap)} is not on any week` : `the weeks ask for ${formatCurrency(-gap)} more than is owed`}).
           {' '}This was left by an older version of the system. Payments will not move it onto a week; an admin must correct this loan (loan check).
@@ -764,7 +743,7 @@ function PaymentSchedule({ loan, loanPayments, loadingPayments, amountInputs, pa
 
                       <td>
                         {isPaid ? (
-                          <span style={{ fontWeight: 600, color: shortfall > 0 ? '#D97706' : 'var(--color-success)' }}>
+                          <span style={{ fontWeight: 600, color: shortfall > 0 ? '#DC2626' : undefined }}>
                             {formatCurrency(p.amountPaid)}
                           </span>
                         ) : (
@@ -787,7 +766,7 @@ function PaymentSchedule({ loan, loanPayments, loadingPayments, amountInputs, pa
 
                       <td>
                         {isPaid && shortfall > 0 ? (
-                          <span style={{ display: 'inline-flex', flexDirection: 'column', color: '#D97706', fontWeight: 600, fontSize: 13 }}>
+                          <span style={{ display: 'inline-flex', flexDirection: 'column', color: '#DC2626', fontWeight: 600, fontSize: 13 }}>
                             ⚠ {formatCurrency(shortfall)}
                             {p.shortfallCarried && <span style={{ fontSize: 11, fontWeight: 500 }}>added to a later week</span>}
                           </span>
@@ -833,10 +812,10 @@ function PaymentSchedule({ loan, loanPayments, loadingPayments, amountInputs, pa
 
               return (
                 <div key={p._id} style={{
-                  border: `1px solid ${isPaid && shortfall === 0 ? '#A7F3D0' : isPaid ? '#FDE68A' : 'var(--color-border)'}`,
+                  border: `1px solid ${isPaid && shortfall === 0 ? '#C7D2FE' : isPaid ? '#FECACA' : 'var(--color-border)'}`,
                   borderRadius: 10,
                   padding: '12px',
-                  background: isPaid && shortfall === 0 ? '#F0FDF4' : isPaid ? '#FFFBEB' : 'var(--color-bg-card)',
+                  background: isPaid && shortfall === 0 ? '#F5F7FF' : isPaid ? '#FEF2F2' : 'var(--color-bg-card)',
                 }}>
                   {/* Card header: week + status */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -856,7 +835,7 @@ function PaymentSchedule({ loan, loanPayments, loadingPayments, amountInputs, pa
                     {isPaid ? (
                       <div>
                         <div style={{ color: 'var(--color-text-muted)', marginBottom: 2 }}>Amount Paid</div>
-                        <div style={{ fontWeight: 700, color: shortfall > 0 ? '#D97706' : 'var(--color-success)' }}>
+                        <div style={{ fontWeight: 700, color: shortfall > 0 ? '#DC2626' : undefined }}>
                           {formatCurrency(p.amountPaid)}
                         </div>
                       </div>
@@ -872,7 +851,7 @@ function PaymentSchedule({ loan, loanPayments, loadingPayments, amountInputs, pa
                     )}
 
                     {isPaid && shortfall > 0 && (
-                      <div style={{ gridColumn: '1/-1', color: '#D97706', fontWeight: 600, fontSize: 12 }}>
+                      <div style={{ gridColumn: '1/-1', color: '#DC2626', fontWeight: 600, fontSize: 12 }}>
                         ⚠ Short by {formatCurrency(shortfall)}{p.shortfallCarried ? ' (added to a later week)' : ''}
                       </div>
                     )}

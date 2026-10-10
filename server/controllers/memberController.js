@@ -117,7 +117,7 @@ const deleteMember = async (req, res, next) => {
     const existingLoan = await Loan.findOne({ where: { memberId: member.id }, paranoid: false });
     if (existingLoan) {
       return res.status(400).json({
-        message: 'Cannot delete a member who has loan records, including deleted loans kept for audit.',
+        message: 'This member has loan records, so they cannot be deleted. Loan history (even of deleted loans) is kept for the records.',
       });
     }
 

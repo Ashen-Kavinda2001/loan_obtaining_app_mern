@@ -157,7 +157,7 @@ export default function App() {
             width: 36,
             height: 36,
             border: '3px solid rgba(255,255,255,0.1)',
-            borderTopColor: '#38BDF8',
+            borderTopColor: '#818CF8',
             borderRadius: '50%',
             animation: 'spin 0.8s linear infinite',
             margin: '0 auto 14px'

@@ -64,9 +64,11 @@ test('payment amount must be a positive number, not a boolean or blank', () => {
   assert.match(firstError(markPaidBody, { amountPaid: 0 }), /greater than 0/);
 });
 
-test('loan delete needs a reason; ids and weeks are bounded', () => {
-  assert.match(firstError(loanDelete, {}), /reason/);
+test('loan delete reason is optional; ids and weeks are bounded', () => {
+  assert.equal(loanDelete.parse({}).reason, undefined);
+  assert.equal(loanDelete.parse({ reason: '   ' }).reason, undefined);
   assert.equal(loanDelete.parse({ reason: '  Duplicate entry ' }).reason, 'Duplicate entry');
+  assert.notEqual(firstError(loanDelete, { reason: 'x'.repeat(256) }), null);
   assert.equal(collectionsQuery.parse({}).weeks, 8);
   assert.notEqual(firstError(collectionsQuery, { weeks: '100' }), null);
   assert.equal(idParams.parse({ id: '12' }).id, 12);

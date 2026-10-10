@@ -26,8 +26,8 @@ export default class ErrorBoundary extends Component {
     return (
       <div className="page-content">
         <div className="card" role="alert" style={{ maxWidth: 480, margin: '40px auto', textAlign: 'center', padding: 28 }}>
-          <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
-            <AlertTriangle size={24} color="#D97706" />
+          <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+            <AlertTriangle size={24} color="#DC2626" />
           </div>
           <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>This page could not be shown</div>
           <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 18, lineHeight: 1.5 }}>

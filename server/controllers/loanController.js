@@ -271,19 +271,27 @@ const createLoan = async (req, res, next) => {
   }
 };
 
-// @desc    Delete a loan. Soft delete: the loan disappears from lists and totals, but the row and its
-//          payment history are kept for audit (7-year retention) with who deleted it and why.
-// @route   DELETE /api/loans/:id?reason=...
-//          (The reason is a query parameter: some WAF configs drop DELETE requests with a body.)
+// @desc    Delete a loan that is completed, or that has no payments yet (e.g. entered by mistake).
+//          Soft delete: the loan disappears from lists and totals, but the row and its payment
+//          history are kept for audit (7-year retention) with who deleted it.
+//          A loan that is partly paid cannot be deleted.
+// @route   DELETE /api/loans/:id[?reason=...]  (optional; a query parameter because some WAF configs drop DELETE bodies)
 // @access  Private (admin)
 const deleteLoan = async (req, res, next) => {
   try {
     const { id } = req.valid.params;
-    const { reason } = req.valid.query;
+    const reason = req.valid.query.reason || null;
 
     await sequelize.transaction(async (t) => {
       const loan = await Loan.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
       if (!loan) throw httpError(404, 'Loan not found');
+      const completed = toCents(loan.remainingBalance) <= 0;
+      if (!completed) {
+        const paidRows = await Payment.count({ where: { loanId: loan.id, status: 'paid' }, transaction: t });
+        if (paidRows > 0 || toCents(loan.paidAmount) > 0) {
+          throw httpError(409, 'This loan has payments, so it cannot be deleted until it is completed.');
+        }
+      }
       await loan.update({ deletedBy: req.user.id, deleteReason: reason }, { transaction: t });
       await loan.destroy({ transaction: t });
     });

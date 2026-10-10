@@ -4,11 +4,11 @@ import client from '../api/client';
 import { useIsAdmin } from '../auth';
 
 const STATUS = {
-  sent:    { label: 'Sent',          color: '#059669', bg: '#D1FAE5' },
-  sending: { label: 'Sending…',      color: '#4F46E5', bg: '#EEF2FF' },
+  sent:    { label: 'Sent',          color: '#4338CA', bg: '#EEF2FF' },
+  sending: { label: 'Sending…',      color: '#4338CA', bg: '#EEF2FF' },
   failed:  { label: 'Failed',        color: '#DC2626', bg: '#FEE2E2' },
-  unknown: { label: 'Not confirmed', color: '#B45309', bg: '#FEF3C7' },
-  skipped: { label: 'Not sent',      color: '#64748B', bg: '#F1F5F9' },
+  unknown: { label: 'Not confirmed', color: '#DC2626', bg: '#FEE2E2' },
+  skipped: { label: 'Not sent',      color: '#0F172A', bg: '#F1F5F9' },
 };
 const HINT = {
   failed:  'The SMS gateway did not send it. It is retried automatically; you can also resend it now.',

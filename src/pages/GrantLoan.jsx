@@ -114,17 +114,17 @@ function GrantLoanForm() {
           )}
 
           {success && (
-            <div style={{ background: '#D1FAE5', border: '1px solid #6EE7B7', borderRadius: 'var(--radius-md)', padding: '14px 18px', marginBottom: 20, fontSize: 13, color: '#065F46', fontWeight: 600 }}>
+            <div style={{ background: '#EEF2FF', border: '1px solid #C7D2FE', borderRadius: 'var(--radius-md)', padding: '14px 18px', marginBottom: 20, fontSize: 13, color: '#3730A3', fontWeight: 600 }}>
               ✅ Loan granted successfully! Payment schedule has been created.
-              <button style={{ marginLeft: 12, color: '#059669', fontSize: 12, cursor: 'pointer', background: 'none', border: 'none', textDecoration: 'underline' }}
+              <button style={{ marginLeft: 12, color: '#4F46E5', fontSize: 12, cursor: 'pointer', background: 'none', border: 'none', textDecoration: 'underline' }}
                 onClick={() => { setSuccess(false); setServerError(''); setForm(getInitialForm()); setErrors({}); }}>Grant another</button>
             </div>
           )}
 
           <div className="card">
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, paddingBottom: 20, borderBottom: '1px solid var(--color-border)' }}>
-              <div style={{ width: 40, height: 40, borderRadius: 'var(--radius-sm)', background: '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <CreditCard size={20} color="#10B981" />
+              <div style={{ width: 40, height: 40, borderRadius: 'var(--radius-sm)', background: '#EEF2FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <CreditCard size={20} color="#4F46E5" />
               </div>
               <div>
                 <div style={{ fontWeight: 700, fontSize: 15 }}>Loan Application</div>
@@ -226,7 +226,7 @@ function GrantLoanForm() {
                 </span>
               </div>
 
-              <div style={{ background: 'linear-gradient(135deg, #4F46E5, #818CF8)', borderRadius: 'var(--radius-md)', padding: '16px', textAlign: 'center', color: '#fff' }}>
+              <div style={{ background: '#4F46E5', borderRadius: 'var(--radius-md)', padding: '16px', textAlign: 'center', color: '#fff' }}>
                 <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Weekly Installment</div>
                 <div style={{ fontSize: 26, fontWeight: 800 }}>
                   {calc.weekly ? formatCurrency(calc.weekly) : '—'}

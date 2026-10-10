@@ -97,10 +97,10 @@ function ForgotPassword({ onBack }) {
     <div style={{ textAlign: 'center' }}>
       <div style={{
         width: 64, height: 64, borderRadius: '50%',
-        background: '#D1FAE5', display: 'flex', alignItems: 'center',
+        background: '#EEF2FF', display: 'flex', alignItems: 'center',
         justifyContent: 'center', margin: '0 auto 16px',
       }}>
-        <CheckCircle size={32} color="#059669" />
+        <CheckCircle size={32} color="#4F46E5" />
       </div>
       <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 8 }}>Password Reset!</div>
       <div style={{ fontSize: 13, color: '#64748B', marginBottom: 24 }}>

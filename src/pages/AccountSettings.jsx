@@ -10,9 +10,9 @@ function StatusBox({ status }) {
     <div style={{
       display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
       borderRadius: 8, fontSize: 13, marginBottom: 16,
-      background: status.type === 'success' ? '#F0FDF4' : '#FEF2F2',
-      border: `1px solid ${status.type === 'success' ? '#BBF7D0' : '#FECACA'}`,
-      color: status.type === 'success' ? '#166534' : '#991B1B',
+      background: status.type === 'success' ? '#EEF2FF' : '#FEF2F2',
+      border: `1px solid ${status.type === 'success' ? '#C7D2FE' : '#FECACA'}`,
+      color: status.type === 'success' ? '#3730A3' : '#991B1B',
       animation: 'slideUp 0.2s ease',
     }}>
       {status.type === 'success'
@@ -197,9 +197,9 @@ export default function AccountSettings() {
     if (/[0-9]/.test(pwd))          score++;
     if (/[^A-Za-z0-9]/.test(pwd))  score++;
     if (score <= 1) return { label: 'Weak',   color: '#EF4444', width: '25%' };
-    if (score === 2) return { label: 'Fair',   color: '#F59E0B', width: '50%' };
-    if (score === 3) return { label: 'Good',   color: '#3B82F6', width: '75%' };
-    return             { label: 'Strong', color: '#10B981', width: '100%' };
+    if (score === 2) return { label: 'Fair',   color: '#0F172A', width: '50%' };
+    if (score === 3) return { label: 'Good',   color: '#818CF8', width: '75%' };
+    return             { label: 'Strong', color: '#4F46E5', width: '100%' };
   };
   const strength = getPasswordStrength(passForm.newPassword);
 
@@ -246,7 +246,7 @@ export default function AccountSettings() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
             <div style={{
               width: 36, height: 36, borderRadius: 10,
-              background: 'linear-gradient(135deg, #4F46E5, #818CF8)',
+              background: '#4F46E5',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               flexShrink: 0,
             }}>
@@ -306,7 +306,7 @@ export default function AccountSettings() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
             <div style={{
               width: 36, height: 36, borderRadius: 10,
-              background: 'linear-gradient(135deg, #059669, #34D399)',
+              background: '#4F46E5',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               flexShrink: 0,
             }}>
@@ -388,7 +388,7 @@ export default function AccountSettings() {
               className="btn btn-primary"
               style={{
                 width: '100%', justifyContent: 'center', gap: 6,
-                background: 'linear-gradient(135deg, #059669, #10B981)',
+                background: '#4F46E5',
               }}
               disabled={passLoading}
             >
