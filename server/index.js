@@ -42,11 +42,11 @@ const helmet        = require('helmet');
 const cookieParser  = require('cookie-parser');
 const corsOptions   = require('./config/corsOptions');
 
-// In-memory diagnostic ring buffer for live operational telemetry (last 50 requests)
+// In-memory diagnostic ring buffer for live operational telemetry (last 20 requests — reduced from 50 for 1GB RAM)
 const recentApiLogs = [];
 const logApiEvent = (item) => {
   recentApiLogs.push({ ...item, timestamp: new Date().toISOString() });
-  if (recentApiLogs.length > 50) recentApiLogs.shift();
+  if (recentApiLogs.length > 20) recentApiLogs.shift();
 };
 
 // In-flight request tracker — registered FIRST so it sees requests that stall anywhere in the
@@ -155,7 +155,16 @@ apiRouter.use('/sms-logs', require('./routes/smsLogs'));
 apiRouter.get('/health', (req, res) => res.json({ status: 'ok' }));
 // Ping — even lighter than health, used for A/B diagnosis: does it respond while a DB route stalls?
 // pid + uptime identify WHICH Node process answered — LiteSpeed/Passenger may run several, each with its own pool
-const processInfo = () => ({ pid: process.pid, uptimeSec: Math.round(process.uptime()) });
+// memoryMB = what this one process really uses (cPanel's PMEM meter also counts file cache, so it reads higher)
+const toMB = (bytes) => Math.round(bytes / 1024 / 1024);
+const processInfo = () => {
+  const mem = process.memoryUsage();
+  return {
+    pid: process.pid,
+    uptimeSec: Math.round(process.uptime()),
+    memoryMB: { rss: toMB(mem.rss), heapUsed: toMB(mem.heapUsed), heapTotal: toMB(mem.heapTotal) },
+  };
+};
 apiRouter.get('/ping',   (req, res) => res.json({ pong: true, ts: Date.now(), ...processInfo(), pool: getPoolStats() }));
 apiRouter.get('/debug-logs', protect, authorize('admin'), (req, res) => res.json({
   ...processInfo(),
